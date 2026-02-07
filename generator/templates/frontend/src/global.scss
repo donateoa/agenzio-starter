@@ -1,0 +1,444 @@
+/*
+ * App Global CSS
+ * ----------------------------------------------------------------------------
+ * Put style rules here that you want to apply globally. These styles are for
+ * the entire app and not just one component. Additionally, this file can be
+ * used as an entry point to import other CSS/Sass files to be included in the
+ * output CSS.
+ */
+
+/* Core CSS required for Ionic components to work properly */
+@import "@ionic/angular/css/core.css";
+
+/* Basic CSS for apps built with Ionic */
+@import "@ionic/angular/css/normalize.css";
+@import "@ionic/angular/css/structure.css";
+@import "@ionic/angular/css/typography.css";
+@import "@ionic/angular/css/display.css";
+
+/* Optional CSS utils that can be commented out */
+@import "@ionic/angular/css/padding.css";
+@import "@ionic/angular/css/float-elements.css";
+@import "@ionic/angular/css/text-alignment.css";
+@import "@ionic/angular/css/text-transformation.css";
+@import "@ionic/angular/css/flex-utils.css";
+
+/* =============================================================================
+   Agenzio Base Styles
+   ============================================================================= */
+
+/* Background grigio per le pagine private */
+ion-content {
+  --background: #f8f9fa;
+}
+
+body {
+  background-color: #fff;
+}
+
+/* Header senza bordi */
+ion-header {
+  box-shadow: none;
+  border: none;
+}
+
+ion-header ion-toolbar {
+  --background: #f8f9fa;
+  --color: #000000;
+  --border-width: 0 !important;
+  --border-style: none;
+}
+
+/* =============================================================================
+   Layout Components
+   ============================================================================= */
+
+/* Contenitore principale con sfondo bianco arrotondato */
+.content-col {
+  flex-grow: 1;
+  display: flex;
+  flex-direction: column;
+  background: #fff;
+  border-radius: 16px;
+  padding: 24px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.03);
+  position: relative;
+  overflow: hidden;
+
+  @media (max-width: 768px) {
+    overflow: visible;
+    height: auto;
+    padding: 0;
+    background: transparent;
+    box-shadow: none;
+    border-radius: 0;
+  }
+}
+
+/* Container centrato per form e contenuti */
+.container-centered {
+  max-width: 800px;
+  margin: 0 auto;
+}
+
+/* Dashboard container */
+.dashboard-container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 1rem;
+}
+
+/* =============================================================================
+   Typography & Sections
+   ============================================================================= */
+
+.welcome-header {
+  margin-bottom: 2rem;
+
+  h1 {
+    font-size: 1.8rem;
+    font-weight: 700;
+    color: #333;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+
+    ion-icon {
+      font-size: 1.5rem;
+    }
+  }
+}
+
+.section-title {
+  font-size: 0.9rem;
+  color: #666;
+  margin-bottom: 1rem;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.section-divider {
+  height: 1px;
+  margin: 16px 0 24px;
+  background: linear-gradient(to right,
+      rgba(0, 0, 0, 0.06),
+      rgba(0, 0, 0, 0.12),
+      rgba(0, 0, 0, 0.06));
+  border-radius: 1px;
+}
+
+/* =============================================================================
+   State Components
+   ============================================================================= */
+
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 60vh;
+  text-align: center;
+  color: #666;
+  font-size: 1.2rem;
+  margin: 10px;
+
+  .icon {
+    font-size: 4rem;
+    margin-bottom: 1rem;
+    color: var(--ion-color-medium);
+  }
+}
+
+.loading-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 80px 0;
+  color: #64748b;
+  width: 100%;
+
+  ion-spinner {
+    width: 32px;
+    height: 32px;
+    margin-bottom: 12px;
+    --color: var(--ion-color-primary);
+  }
+
+  p {
+    margin: 0;
+    font-size: 14px;
+    font-weight: 500;
+  }
+}
+
+/* =============================================================================
+   Form Components
+   ============================================================================= */
+
+ion-input.custom-input,
+ion-textarea.custom-input,
+ion-select.custom-input {
+  --background: #ffffff;
+  --border-color: #dddddd;
+  --border-radius: 8px;
+  --border-width: 1px;
+  --padding-start: 12px;
+  --padding-end: 12px;
+  --highlight-color-focused: var(--ion-color-primary);
+  --placeholder-color: #999999;
+  --placeholder-opacity: 1;
+  margin-bottom: 16px;
+  font-size: 1rem;
+}
+
+ion-input::part(label),
+ion-textarea::part(label),
+ion-select::part(label) {
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: #555555;
+  margin-bottom: 6px;
+}
+
+/* =============================================================================
+   Card & Item Utilities
+   ============================================================================= */
+
+ion-card.flat {
+  box-shadow: none;
+  border: 1px solid #e2e2e2;
+  border-radius: 10px;
+}
+
+/* Card arrotondata stile Agenzio */
+ion-card,
+.agenzio-card {
+  border-radius: 16px;
+  margin: 0 0 16px 0;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+  border: 1px solid #f1f5f9;
+
+  ion-card-content {
+    padding: 24px;
+  }
+
+
+  /* Header interno alle card */
+  ion-card-header {
+    display: flex;
+    align-items: start;
+    gap: 12px;
+    margin-bottom: 8px;
+
+    ion-icon {
+      font-size: 24px;
+      color: #64748b;
+    }
+
+    h2 {
+      margin: 0;
+      font-size: 1.1rem;
+      font-weight: 600;
+      color: #1e293b;
+    }
+
+    &.danger ion-icon {
+      color: var(--ion-color-danger);
+    }
+
+    &.success ion-icon {
+      color: var(--ion-color-success);
+    }
+
+    &.primary ion-icon {
+      color: var(--ion-color-primary);
+    }
+  }
+
+  /* Titolo card con icona */
+  ion-card-title {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+
+    ion-icon {
+      font-size: 20px;
+      color: var(--ion-color-primary);
+    }
+  }
+
+  /* Descrizione sotto l'header delle card */
+  .agenzio-card-description {
+    color: #64748b;
+    font-size: 0.9rem;
+    margin: 0 0 16px 0;
+    line-height: 1.5;
+  }
+}
+
+/* Banner informativo (verde sicurezza, blu info, etc) */
+.agenzio-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  padding: 20px 24px;
+  border-radius: 16px;
+  margin-bottom: 16px;
+
+  ion-icon {
+    font-size: 28px;
+    flex-shrink: 0;
+    margin-top: 2px;
+  }
+
+  .banner-text {
+    strong {
+      font-size: 1.1rem;
+      display: block;
+      margin-bottom: 4px;
+    }
+
+    p {
+      margin: 0;
+      opacity: 0.9;
+      font-size: 0.9rem;
+      line-height: 1.4;
+    }
+  }
+
+  &.success {
+    background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+    color: white;
+  }
+
+  &.primary {
+    background: linear-gradient(135deg, var(--ion-color-primary) 0%, var(--ion-color-primary-shade) 100%);
+    color: white;
+  }
+
+  &.warning {
+    background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
+    color: white;
+  }
+}
+
+/* Footer pagina con link */
+.agenzio-page-footer {
+  text-align: center;
+  padding: 24px 16px;
+  color: #94a3b8;
+  font-size: 0.85rem;
+
+  p {
+    margin: 0 0 8px 0;
+  }
+
+  a {
+    color: var(--ion-color-primary);
+    text-decoration: none;
+    font-weight: 500;
+  }
+}
+
+/* Item con toggle/checkbox stilizzato */
+.agenzio-setting-item {
+  --padding-start: 0;
+  --inner-padding-end: 0;
+  --background: transparent;
+  margin-bottom: 8px;
+
+  h3 {
+    font-weight: 600;
+    font-size: 0.95rem;
+    margin: 0 0 4px 0;
+    color: #1e293b;
+  }
+
+  p {
+    color: #64748b;
+    font-size: 0.85rem;
+    margin: 0;
+  }
+}
+
+/* Bottoni arrotondati - stile globale */
+ion-button {
+  --border-radius: 14px;
+}
+
+/* Input stile outline con label floating */
+.agenzio-input {
+  --background: #ffffff;
+  --border-radius: 12px;
+  --border-color: #e2e8f0;
+  --border-width: 1px;
+  --highlight-color-focused: var(--ion-color-primary);
+  --highlight-color-valid: var(--ion-color-primary);
+  margin-bottom: 16px;
+}
+
+ion-input.agenzio-input,
+ion-textarea.agenzio-input,
+ion-select.agenzio-input {
+  --background: #ffffff;
+  --border-radius: 12px;
+  --padding-start: 16px;
+  --padding-end: 16px;
+  margin-bottom: 16px;
+}
+
+.transparent-item {
+  --ion-item-background: transparent;
+}
+
+.my-item {
+  display: flex;
+  align-items: center;
+  column-gap: 10px;
+
+  &.align-start {
+    align-items: start;
+  }
+
+  &.space-between-items {
+    justify-content: space-between;
+  }
+}
+
+.card-header-action {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-direction: row;
+}
+
+/* =============================================================================
+   Responsive Adjustments
+   ============================================================================= */
+
+@media screen and (max-width: 768px) {
+  ion-card {
+    margin: 0;
+  }
+}
+
+/* =============================================================================
+   Animations
+   ============================================================================= */
+
+.sub-page-container {
+  animation: fadeIn 0.3s ease-out;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}

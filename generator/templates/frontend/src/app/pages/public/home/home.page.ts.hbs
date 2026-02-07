@@ -1,0 +1,159 @@
+import { Component } from '@angular/core';
+import { CommonModule } from '@angular/common';
+import { RouterLink } from '@angular/router';
+import {
+  IonContent,
+  IonButton,
+} from '@ionic/angular/standalone';
+import { PublicHeaderComponent, FooterComponent, FooterColumn } from '@agenzio/core-frontend';
+import { environment } from '../../../../environments/environment';
+
+@Component({
+  selector: 'app-home',
+  standalone: true,
+  imports: [
+    CommonModule,
+    RouterLink,
+    IonContent,
+    IonButton,
+    PublicHeaderComponent,
+    FooterComponent,
+  ],
+  template: `
+    <agenzio-public-header
+      [brandName]="'{{displayName}}'"
+      [logoUrl]="'assets/logo.svg'"
+      [homeLink]="'/public/home'"
+      [privateAreaLink]="'/app'"
+      [privateAreaLabel]="'Area Clienti'">
+    </agenzio-public-header>
+
+    <ion-content>
+      <div class="hero-section">
+        <div class="hero-content">
+          <h1>{{displayName}}</h1>
+          <p class="hero-subtitle">
+            La piattaforma per gestire il tuo progetto in modo semplice e professionale.
+          </p>
+          <div class="hero-actions">
+            <ion-button routerLink="/login" size="large">
+              Inizia Ora
+            </ion-button>
+            <ion-button routerLink="/public/privacy" fill="outline" size="large">
+              Scopri di più
+            </ion-button>
+          </div>
+        </div>
+      </div>
+
+      <div class="features-section">
+        <h2>Funzionalità</h2>
+        <div class="features-grid">
+          <div class="feature-card">
+            <div class="feature-icon">📊</div>
+            <h3>Dashboard Intuitiva</h3>
+            <p>Gestisci tutto da un'unica interfaccia semplice e potente.</p>
+          </div>
+          <div class="feature-card">
+            <div class="feature-icon">👥</div>
+            <h3>Collaborazione</h3>
+            <p>Invita il tuo team e lavora insieme in tempo reale.</p>
+          </div>
+          <div class="feature-card">
+            <div class="feature-icon">🔒</div>
+            <h3>Sicurezza</h3>
+            <p>I tuoi dati sono protetti con le migliori pratiche di sicurezza.</p>
+          </div>
+        </div>
+      </div>
+
+      <agenzio-footer
+        [brandName]="'{{displayName}}'"
+        [brandDescription]="'La piattaforma per gestire il tuo progetto in modo semplice e professionale.'"
+        [columns]="footerColumns"
+        [showLanguageSwitcher]="false"
+        [copyright]="copyright"
+        [version]="version">
+      </agenzio-footer>
+    </ion-content>
+  `,
+  styles: [`
+    .hero-section {
+      background: linear-gradient(135deg, var(--ion-color-primary) 0%, var(--ion-color-primary-shade) 100%);
+      color: white;
+      padding: 80px 24px;
+      text-align: center;
+    }
+    .hero-content {
+      max-width: 800px;
+      margin: 0 auto;
+    }
+    h1 {
+      font-size: 3rem;
+      font-weight: 700;
+      margin-bottom: 16px;
+    }
+    .hero-subtitle {
+      font-size: 1.25rem;
+      opacity: 0.9;
+      margin-bottom: 32px;
+    }
+    .hero-actions {
+      display: flex;
+      gap: 16px;
+      justify-content: center;
+      flex-wrap: wrap;
+    }
+    .hero-actions ion-button {
+      --border-radius: 8px;
+    }
+    .features-section {
+      padding: 64px 24px;
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+    .features-section h2 {
+      text-align: center;
+      font-size: 2rem;
+      margin-bottom: 48px;
+    }
+    .features-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 32px;
+    }
+    .feature-card {
+      background: white;
+      border-radius: 16px;
+      padding: 32px;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+      text-align: center;
+    }
+    .feature-icon {
+      font-size: 48px;
+      margin-bottom: 16px;
+    }
+    .feature-card h3 {
+      font-size: 1.25rem;
+      margin-bottom: 12px;
+    }
+    .feature-card p {
+      color: #666;
+      line-height: 1.6;
+    }
+  `],
+})
+export class HomePage {
+  version = environment.version;
+  copyright = `© ${new Date().getFullYear()} {{displayName}}. Tutti i diritti riservati.`;
+
+  footerColumns: FooterColumn[] = [
+    {
+      title: 'Legale',
+      links: [
+        { label: 'Privacy Policy', routerLink: '/public/privacy' },
+        { label: 'Termini e Condizioni', routerLink: '/public/privacy' },
+      ]
+    }
+  ];
+}

@@ -1,0 +1,207 @@
+import { Component, inject } from '@angular/core';
+import { CommonModule } from '@angular/common';
+import { FormsModule } from '@angular/forms';
+import {
+  IonContent,
+  IonCard,
+  IonCardHeader,
+  IonCardTitle,
+  IonCardContent,
+  IonItem,
+  IonLabel,
+  IonToggle,
+  IonButton,
+  IonIcon,
+  AlertController,
+  ToastController,
+} from '@ionic/angular/standalone';
+import { PrivateHeaderComponent } from '@agenzio/core-frontend';
+import { Auth, deleteUser, signOut } from '@angular/fire/auth';
+import { Router } from '@angular/router';
+import { addIcons } from 'ionicons';
+import { shieldOutline, trashOutline, downloadOutline, logOutOutline } from 'ionicons/icons';
+
+@Component({
+  selector: 'app-privacy',
+  standalone: true,
+  imports: [
+    CommonModule,
+    FormsModule,
+    IonContent,
+    IonCard,
+    IonCardHeader,
+    IonCardTitle,
+    IonCardContent,
+    IonItem,
+    IonLabel,
+    IonToggle,
+    IonButton,
+    IonIcon,
+    PrivateHeaderComponent,
+  ],
+  template: `
+    <agenzio-private-header
+      [brandName]="'{{displayName}}'"
+      [logoUrl]="'assets/logo.svg'"
+      [homeLink]="'/app/home'"
+      [subtitle]="'Privacy'"
+      [menuId]="'main-menu'">
+    </agenzio-private-header>
+
+    <ion-content class="ion-padding">
+      <div class="privacy-container">
+        <ion-card>
+          <ion-card-header>
+            <ion-card-title>
+              <ion-icon name="shield-outline"></ion-icon>
+              Impostazioni Privacy
+            </ion-card-title>
+          </ion-card-header>
+          <ion-card-content>
+            <ion-item lines="none">
+              <ion-label>
+                <h2>Email di marketing</h2>
+                <p>Ricevi aggiornamenti e novità via email</p>
+              </ion-label>
+              <ion-toggle slot="end" [(ngModel)]="marketingEmails"></ion-toggle>
+            </ion-item>
+
+            <ion-item lines="none">
+              <ion-label>
+                <h2>Notifiche push</h2>
+                <p>Ricevi notifiche per eventi importanti</p>
+              </ion-label>
+              <ion-toggle slot="end" [(ngModel)]="pushNotifications"></ion-toggle>
+            </ion-item>
+          </ion-card-content>
+        </ion-card>
+
+        <ion-card>
+          <ion-card-header>
+            <ion-card-title>
+              <ion-icon name="download-outline"></ion-icon>
+              I tuoi dati
+            </ion-card-title>
+          </ion-card-header>
+          <ion-card-content>
+            <p class="description">
+              Puoi richiedere una copia di tutti i tuoi dati personali in qualsiasi momento.
+            </p>
+            <ion-button expand="block" fill="outline" (click)="requestDataExport()">
+              <ion-icon name="download-outline" slot="start"></ion-icon>
+              Richiedi export dati
+            </ion-button>
+          </ion-card-content>
+        </ion-card>
+
+        <ion-card class="danger-zone">
+          <ion-card-header>
+            <ion-card-title>
+              <ion-icon name="trash-outline"></ion-icon>
+              Zona Pericolosa
+            </ion-card-title>
+          </ion-card-header>
+          <ion-card-content>
+            <p class="description">
+              L'eliminazione dell'account è irreversibile. Tutti i tuoi dati verranno cancellati permanentemente.
+            </p>
+            <ion-button expand="block" color="danger" fill="outline" (click)="confirmDeleteAccount()">
+              <ion-icon name="trash-outline" slot="start"></ion-icon>
+              Elimina account
+            </ion-button>
+          </ion-card-content>
+        </ion-card>
+      </div>
+    </ion-content>
+  `,
+  styles: [`
+    .privacy-container {
+      max-width: 600px;
+      margin: 0 auto;
+    }
+    ion-card-title {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    ion-card-title ion-icon {
+      font-size: 24px;
+      color: var(--ion-color-primary);
+    }
+    .description {
+      color: #666;
+      margin-bottom: 16px;
+    }
+    .danger-zone ion-card-title ion-icon {
+      color: var(--ion-color-danger);
+    }
+    ion-item {
+      --padding-start: 0;
+      --inner-padding-end: 0;
+    }
+    ion-item h2 {
+      font-weight: 600;
+    }
+    ion-item p {
+      color: #666;
+    }
+  `],
+})
+export class PrivacyPage {
+  private auth = inject(Auth);
+  private alertCtrl = inject(AlertController);
+  private toastCtrl = inject(ToastController);
+  private router = inject(Router);
+
+  marketingEmails = true;
+  pushNotifications = true;
+
+  constructor() {
+    addIcons({ shieldOutline, trashOutline, downloadOutline, logOutOutline });
+  }
+
+  async requestDataExport(): Promise<void> {
+    const toast = await this.toastCtrl.create({
+      message: 'Richiesta inviata. Riceverai i tuoi dati via email.',
+      duration: 3000,
+      color: 'success',
+    });
+    await toast.present();
+  }
+
+  async confirmDeleteAccount(): Promise<void> {
+    const alert = await this.alertCtrl.create({
+      header: 'Elimina Account',
+      message: 'Sei sicuro di voler eliminare il tuo account? Questa azione è irreversibile.',
+      buttons: [
+        { text: 'Annulla', role: 'cancel' },
+        {
+          text: 'Elimina',
+          role: 'destructive',
+          handler: () => this.deleteAccount(),
+        },
+      ],
+    });
+    await alert.present();
+  }
+
+  private async deleteAccount(): Promise<void> {
+    try {
+      const user = this.auth.currentUser;
+      if (user) {
+        await deleteUser(user);
+        await signOut(this.auth);
+        this.router.navigate(['/public/home']);
+      }
+    } catch (error: any) {
+      const toast = await this.toastCtrl.create({
+        message: error.code === 'auth/requires-recent-login'
+          ? 'Per sicurezza, effettua nuovamente il login prima di eliminare l\'account.'
+          : 'Errore durante l\'eliminazione dell\'account.',
+        duration: 3000,
+        color: 'danger',
+      });
+      await toast.present();
+    }
+  }
+}

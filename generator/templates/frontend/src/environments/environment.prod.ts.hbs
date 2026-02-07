@@ -1,0 +1,15 @@
+export const environment = {
+  production: true,
+  useEmulators: false,
+  version: '0.0.1',
+  apiUrl: '/api',
+  docsUrl: 'https://{{appName}}.{{domain}}',
+  firebase: {
+    projectId: '{{productionProjectId}}',
+    appId: 'YOUR_APP_ID', // TODO: Update after terraform apply
+    storageBucket: '{{productionProjectId}}.appspot.com',
+    apiKey: 'YOUR_API_KEY', // TODO: Update after terraform apply
+    authDomain: '{{productionProjectId}}.firebaseapp.com',
+    messagingSenderId: 'YOUR_SENDER_ID' // TODO: Update after terraform apply
+  }
+};

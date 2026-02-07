@@ -1,0 +1,28 @@
+title: {{displayName}}
+description: {{description}}
+baseurl: ""
+url: "https://docs.{{appName}}.{{domain}}"
+
+# Theme
+remote_theme: just-the-docs/just-the-docs
+
+# Build settings
+markdown: kramdown
+highlighter: rouge
+
+# Plugins
+plugins:
+  - jekyll-remote-theme
+  - jekyll-seo-tag
+
+# Navigation
+nav_enabled: true
+search_enabled: true
+
+# Footer
+footer_content: "Copyright &copy; {{currentYear}} {{copyrightHolder}}. All rights reserved."
+
+# Aux links
+aux_links:
+  "View on GitHub":
+    - "https://github.com/{{githubRepo}}"

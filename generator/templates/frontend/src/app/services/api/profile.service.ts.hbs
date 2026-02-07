@@ -1,0 +1,43 @@
+import { Injectable, inject } from '@angular/core';
+import { HttpClient } from '@angular/common/http';
+import { Observable } from 'rxjs';
+import { environment } from '../../../environments/environment';
+
+export interface UserProfile {
+  id: string;
+  email: string;
+  firstName?: string;
+  lastName?: string;
+  phone?: string;
+  photoUrl?: string;
+  createdAt?: Date;
+  updatedAt?: Date;
+}
+
+export interface UpdateProfileData {
+  firstName?: string;
+  lastName?: string;
+  phone?: string;
+}
+
+@Injectable({
+  providedIn: 'root',
+})
+export class ProfileService {
+  private http = inject(HttpClient);
+  private apiUrl = environment.apiUrl;
+
+  /**
+   * Get the current user's profile
+   */
+  getProfile(): Observable<UserProfile> {
+    return this.http.get<UserProfile>(`${this.apiUrl}/me/profile`);
+  }
+
+  /**
+   * Update the current user's profile
+   */
+  updateProfile(data: UpdateProfileData): Observable<UserProfile> {
+    return this.http.put<UserProfile>(`${this.apiUrl}/me/profile`, data);
+  }
+}

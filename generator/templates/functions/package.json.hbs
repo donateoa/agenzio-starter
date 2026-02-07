@@ -1,0 +1,35 @@
+{
+  "name": "{{appName}}-backend",
+  "version": "0.0.1",
+  "private": true,
+  "description": "{{description}} - Backend",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "build:watch": "tsc --watch",
+    "serve": "npm run build && firebase emulators:start --only functions,firestore",
+    "serve:dev": "cross-env DEV_SERVER=true USE_AUTH_EMULATOR=true ts-node-dev --inspect=9229 --respawn --transpile-only src/index.ts",
+    "serve:emulator": "cross-env DEV_SERVER=true FUNCTIONS_EMULATOR=true USE_AUTH_EMULATOR=true ts-node-dev --inspect=9229 --respawn --transpile-only src/index.ts",
+    "deploy": "firebase deploy --only functions",
+    "logs": "firebase functions:log"
+  },
+  "engines": {
+    "node": "22"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^17.2.4",
+    "express": "^5.1.0",
+    "firebase-admin": "^13.0.2",
+    "firebase-functions": "^7.0.2"{{#if includeStripe}},
+    "stripe": "^17.5.0"{{/if}}{{#if includeGemini}},
+    "@google/generative-ai": "^0.24.0"{{/if}}
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.17",
+    "@types/express": "^5.0.0",
+    "cross-env": "^7.0.3",
+    "ts-node-dev": "^2.0.0",
+    "typescript": "~5.8.0"
+  }
+}

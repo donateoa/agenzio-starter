@@ -1,0 +1,463 @@
+{{#if includeStripe}}
+import { Component, OnInit, inject } from '@angular/core';
+import { CommonModule } from '@angular/common';
+import { FormsModule } from '@angular/forms';
+import {
+  IonContent,
+  IonCard,
+  IonCardHeader,
+  IonCardTitle,
+  IonCardContent,
+  IonItem,
+  IonLabel,
+  IonBadge,
+  IonButton,
+  IonIcon,
+  IonSpinner,
+  IonList,
+  IonSegment,
+  IonSegmentButton,
+  ToastController,
+} from '@ionic/angular/standalone';
+import { PrivateHeaderComponent, Organization } from '@agenzio/core-frontend';
+import { UserContextService } from '../../../../services/user-context.service';
+import { OrganizationService } from '../../../../services/api/organization.service';
+import { PaymentsService } from '../../../../services/api/payments.service';
+import { addIcons } from 'ionicons';
+import {
+  walletOutline,
+  linkOutline,
+  checkmarkCircleOutline,
+  closeCircleOutline,
+  downloadOutline,
+  arrowDownOutline,
+  arrowUpOutline,
+{{#if includeFIC}}
+  cloudOutline,
+{{/if}}
+} from 'ionicons/icons';
+import { firstValueFrom } from 'rxjs';
+import { switchMap, filter, catchError } from 'rxjs/operators';
+import { of } from 'rxjs';
+
+interface ConnectStatus {
+  connected: boolean;
+  accountId?: string;
+  chargesEnabled?: boolean;
+  payoutsEnabled?: boolean;
+}
+
+interface Transaction {
+  id: string;
+  date: Date;
+  description: string;
+  amount: number;
+  type: 'income' | 'expense';
+  status: string;
+}
+
+{{#if includeFIC}}
+interface FICStatus {
+  connected: boolean;
+  companyName?: string;
+}
+{{/if}}
+
+@Component({
+  selector: 'app-payments',
+  standalone: true,
+  imports: [
+    CommonModule,
+    FormsModule,
+    IonContent,
+    IonCard,
+    IonCardHeader,
+    IonCardTitle,
+    IonCardContent,
+    IonItem,
+    IonLabel,
+    IonBadge,
+    IonButton,
+    IonIcon,
+    IonSpinner,
+    IonList,
+    IonSegment,
+    IonSegmentButton,
+    PrivateHeaderComponent,
+  ],
+  template: `
+    <agenzio-private-header
+      [brandName]="'{{displayName}}'"
+      [logoUrl]="'assets/logo.svg'"
+      [homeLink]="'/app/home'"
+      [subtitle]="'Pagamenti'"
+      [menuId]="'main-menu'"
+      [activeOrganization]="activeOrganization">
+    </agenzio-private-header>
+
+    <ion-content class="ion-padding">
+      <div class="payments-container">
+        <h1>
+          <ion-icon name="wallet-outline"></ion-icon>
+          Pagamenti e Entrate
+        </h1>
+        <p class="subtitle" *ngIf="activeOrganization">
+          Gestisci i pagamenti di <strong>\{{ activeOrganization.name }}</strong>
+        </p>
+
+        <div *ngIf="isLoading" class="loading-container">
+          <ion-spinner name="crescent"></ion-spinner>
+        </div>
+
+        <ng-container *ngIf="!isLoading">
+          <!-- Stripe Connect Card -->
+          <ion-card>
+            <ion-card-header>
+              <ion-card-title>
+                <ion-icon name="link-outline"></ion-icon>
+                Stripe Connect
+              </ion-card-title>
+            </ion-card-header>
+            <ion-card-content>
+              <div class="connect-status">
+                <ion-badge [color]="connectStatus?.connected ? 'success' : 'medium'">
+                  <ion-icon [name]="connectStatus?.connected ? 'checkmark-circle-outline' : 'close-circle-outline'"></ion-icon>
+                  \{{ connectStatus?.connected ? 'Connesso' : 'Non connesso' }}
+                </ion-badge>
+                <p *ngIf="connectStatus?.connected && connectStatus?.chargesEnabled">
+                  Puoi ricevere pagamenti
+                </p>
+                <p *ngIf="connectStatus?.connected && !connectStatus?.chargesEnabled" class="warning">
+                  Completa la configurazione per ricevere pagamenti
+                </p>
+              </div>
+
+              <ion-button *ngIf="!connectStatus?.connected" (click)="startOnboarding()">
+                Connetti Stripe
+              </ion-button>
+              <ion-button *ngIf="connectStatus?.connected && !connectStatus?.chargesEnabled" (click)="startOnboarding()">
+                Completa Configurazione
+              </ion-button>
+              <ion-button *ngIf="connectStatus?.connected && connectStatus?.chargesEnabled" fill="outline" (click)="openDashboard()">
+                Apri Dashboard Stripe
+              </ion-button>
+            </ion-card-content>
+          </ion-card>
+
+{{#if includeFIC}}
+          <!-- Fatture in Cloud Card -->
+          <ion-card>
+            <ion-card-header>
+              <ion-card-title>
+                <ion-icon name="cloud-outline"></ion-icon>
+                Fatture in Cloud
+              </ion-card-title>
+            </ion-card-header>
+            <ion-card-content>
+              <div class="connect-status">
+                <ion-badge [color]="ficStatus?.connected ? 'success' : 'medium'">
+                  <ion-icon [name]="ficStatus?.connected ? 'checkmark-circle-outline' : 'close-circle-outline'"></ion-icon>
+                  \{{ ficStatus?.connected ? 'Connesso' : 'Non connesso' }}
+                </ion-badge>
+                <p *ngIf="ficStatus?.connected && ficStatus?.companyName">
+                  Azienda: \{{ ficStatus?.companyName }}
+                </p>
+              </div>
+
+              <ion-button *ngIf="!ficStatus?.connected" (click)="connectFIC()">
+                Connetti Fatture in Cloud
+              </ion-button>
+              <ion-button *ngIf="ficStatus?.connected" fill="outline" color="danger" (click)="disconnectFIC()">
+                Disconnetti
+              </ion-button>
+            </ion-card-content>
+          </ion-card>
+{{/if}}
+
+          <!-- Transactions Card -->
+          <ion-card>
+            <ion-card-header>
+              <div class="transactions-header">
+                <ion-card-title>Transazioni</ion-card-title>
+                <ion-button fill="clear" size="small" (click)="exportCSV()">
+                  <ion-icon name="download-outline" slot="start"></ion-icon>
+                  Esporta CSV
+                </ion-button>
+              </div>
+            </ion-card-header>
+            <ion-card-content>
+              <ion-segment [(ngModel)]="transactionFilter" (ionChange)="filterTransactions()">
+                <ion-segment-button value="all">Tutte</ion-segment-button>
+                <ion-segment-button value="income">Entrate</ion-segment-button>
+                <ion-segment-button value="expense">Uscite</ion-segment-button>
+              </ion-segment>
+
+              <ion-list lines="none" *ngIf="filteredTransactions.length > 0; else noTransactions">
+                <ion-item *ngFor="let tx of filteredTransactions" class="transaction-item">
+                  <ion-icon
+                    [name]="tx.type === 'income' ? 'arrow-down-outline' : 'arrow-up-outline'"
+                    [color]="tx.type === 'income' ? 'success' : 'danger'"
+                    slot="start">
+                  </ion-icon>
+                  <ion-label>
+                    <h3>\{{ tx.description }}</h3>
+                    <p>\{{ tx.date | date:'dd/MM/yyyy HH:mm' }}</p>
+                  </ion-label>
+                  <ion-label slot="end" class="amount" [class.income]="tx.type === 'income'" [class.expense]="tx.type === 'expense'">
+                    \{{ tx.type === 'income' ? '+' : '-' }}\{{ tx.amount | currency:'EUR' }}
+                  </ion-label>
+                </ion-item>
+              </ion-list>
+              <ng-template #noTransactions>
+                <p class="no-data">Nessuna transazione</p>
+              </ng-template>
+            </ion-card-content>
+          </ion-card>
+        </ng-container>
+      </div>
+    </ion-content>
+  `,
+  styles: [`
+    .payments-container {
+      max-width: 800px;
+      margin: 0 auto;
+    }
+    h1 {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 1.5rem;
+      margin-bottom: 8px;
+    }
+    h1 ion-icon {
+      color: var(--ion-color-primary);
+    }
+    .subtitle {
+      color: #666;
+      margin-bottom: 24px;
+    }
+    .loading-container {
+      display: flex;
+      justify-content: center;
+      padding: 48px;
+    }
+    ion-card-title {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    ion-card-title ion-icon {
+      font-size: 20px;
+      color: var(--ion-color-primary);
+    }
+    .connect-status {
+      margin-bottom: 16px;
+    }
+    .connect-status ion-badge {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      margin-bottom: 8px;
+    }
+    .connect-status p {
+      margin: 0;
+      color: #666;
+    }
+    .connect-status .warning {
+      color: var(--ion-color-warning-shade);
+    }
+    .transactions-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      width: 100%;
+    }
+    ion-segment {
+      margin-bottom: 16px;
+    }
+    .transaction-item {
+      --padding-start: 0;
+      --inner-padding-end: 0;
+      margin-bottom: 8px;
+    }
+    .transaction-item h3 {
+      font-weight: 600;
+    }
+    .amount {
+      text-align: right;
+      font-weight: 600;
+    }
+    .amount.income {
+      color: var(--ion-color-success);
+    }
+    .amount.expense {
+      color: var(--ion-color-danger);
+    }
+    .no-data {
+      text-align: center;
+      color: #666;
+      padding: 24px;
+    }
+  `],
+})
+export class PaymentsPage implements OnInit {
+  private userContext = inject(UserContextService);
+  private orgService = inject(OrganizationService);
+  private paymentsService = inject(PaymentsService);
+  private toastCtrl = inject(ToastController);
+
+  activeOrganization: Organization | null = null;
+  connectStatus: ConnectStatus | null = null;
+{{#if includeFIC}}
+  ficStatus: FICStatus | null = null;
+{{/if}}
+  transactions: Transaction[] = [];
+  filteredTransactions: Transaction[] = [];
+  transactionFilter = 'all';
+  isLoading = false;
+
+  constructor() {
+    addIcons({
+      walletOutline,
+      linkOutline,
+      checkmarkCircleOutline,
+      closeCircleOutline,
+      downloadOutline,
+      arrowDownOutline,
+      arrowUpOutline,
+{{#if includeFIC}}
+      cloudOutline,
+{{/if}}
+    });
+  }
+
+  ngOnInit(): void {
+    this.userContext.getActiveOrganizationId$().pipe(
+      filter(id => !!id),
+      switchMap(id => this.orgService.get(id!).pipe(catchError(() => of(null))))
+    ).subscribe(org => {
+      this.activeOrganization = org;
+      if (org) {
+        this.loadData();
+      }
+    });
+  }
+
+  async loadData(): Promise<void> {
+    this.isLoading = true;
+    try {
+      const [connectStatus, transactions{{#if includeFIC}}, ficStatus{{/if}}] = await Promise.all([
+        firstValueFrom(this.paymentsService.getConnectStatus()),
+        firstValueFrom(this.paymentsService.getTransactions()),
+{{#if includeFIC}}
+        firstValueFrom(this.paymentsService.getFICStatus()),
+{{/if}}
+      ]);
+      this.connectStatus = connectStatus;
+      this.transactions = transactions;
+{{#if includeFIC}}
+      this.ficStatus = ficStatus;
+{{/if}}
+      this.filterTransactions();
+    } catch (error) {
+      console.error('Error loading payments data', error);
+    } finally {
+      this.isLoading = false;
+    }
+  }
+
+  filterTransactions(): void {
+    if (this.transactionFilter === 'all') {
+      this.filteredTransactions = this.transactions;
+    } else {
+      this.filteredTransactions = this.transactions.filter(tx => tx.type === this.transactionFilter);
+    }
+  }
+
+  async startOnboarding(): Promise<void> {
+    try {
+      const { url } = await firstValueFrom(this.paymentsService.createConnectOnboarding());
+      window.location.href = url;
+    } catch (error) {
+      const toast = await this.toastCtrl.create({
+        message: 'Errore durante l\'avvio dell\'onboarding',
+        duration: 2000,
+        color: 'danger',
+      });
+      await toast.present();
+    }
+  }
+
+  async openDashboard(): Promise<void> {
+    try {
+      const { url } = await firstValueFrom(this.paymentsService.getConnectDashboardLink());
+      window.open(url, '_blank');
+    } catch (error) {
+      const toast = await this.toastCtrl.create({
+        message: 'Errore durante l\'apertura della dashboard',
+        duration: 2000,
+        color: 'danger',
+      });
+      await toast.present();
+    }
+  }
+
+{{#if includeFIC}}
+  async connectFIC(): Promise<void> {
+    try {
+      const { url } = await firstValueFrom(this.paymentsService.getFICAuthUrl());
+      window.location.href = url;
+    } catch (error) {
+      const toast = await this.toastCtrl.create({
+        message: 'Errore durante la connessione a Fatture in Cloud',
+        duration: 2000,
+        color: 'danger',
+      });
+      await toast.present();
+    }
+  }
+
+  async disconnectFIC(): Promise<void> {
+    try {
+      await firstValueFrom(this.paymentsService.disconnectFIC());
+      this.ficStatus = { connected: false };
+      const toast = await this.toastCtrl.create({
+        message: 'Fatture in Cloud disconnesso',
+        duration: 2000,
+        color: 'success',
+      });
+      await toast.present();
+    } catch (error) {
+      const toast = await this.toastCtrl.create({
+        message: 'Errore durante la disconnessione',
+        duration: 2000,
+        color: 'danger',
+      });
+      await toast.present();
+    }
+  }
+{{/if}}
+
+  async exportCSV(): Promise<void> {
+    try {
+      const blob = await firstValueFrom(this.paymentsService.exportTransactionsCSV());
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `transactions-${new Date().toISOString().split('T')[0]}.csv`;
+      a.click();
+      window.URL.revokeObjectURL(url);
+    } catch (error) {
+      const toast = await this.toastCtrl.create({
+        message: 'Errore durante l\'esportazione',
+        duration: 2000,
+        color: 'danger',
+      });
+      await toast.present();
+    }
+  }
+}
+{{else}}
+// Stripe not included - this page should not be generated
+export {}
+{{/if}}

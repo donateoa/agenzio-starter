@@ -1,0 +1,75 @@
+terraform {
+  required_providers {
+    google-beta = {
+      source  = "hashicorp/google-beta"
+      version = "~> 5.0"
+    }
+  }
+}
+
+provider "google-beta" {
+  region = "{{region}}"
+  # Required for Identity Platform API when using ADC
+  user_project_override = true
+  billing_project       = "{{productionProjectId}}"
+}
+
+# Firebase Project for Production
+module "{{camelCase appName}}_production" {
+  source          = "../modules/firebase-project"
+  project_id      = "{{productionProjectId}}"
+  project_name    = "{{displayName}} Production"
+  billing_account = "{{billingAccountId}}"
+  region          = "{{region}}"
+
+  # Authentication Configuration
+  enable_auth         = {{enableAuth}}
+  auth_email_password = {{authEmailPassword}}
+  {{#if authGoogle}}
+  # Google Sign-In - uncomment and provide OAuth credentials
+  # auth_google = {
+  #   client_id     = var.google_oauth_client_id
+  #   client_secret = var.google_oauth_client_secret
+  # }
+  {{/if}}
+}
+
+# GitHub Workload Identity Federation for CI/CD
+module "github_wif" {
+  source      = "../modules/github-wif"
+  project_id  = module.{{camelCase appName}}_production.project_id
+  github_repo = "{{githubRepo}}"
+
+  # Wait for all APIs to be enabled before creating WIF resources
+  depends_on = [module.{{camelCase appName}}_production]
+}
+
+# Outputs
+output "production_project_id" {
+  description = "The Firebase project ID for production"
+  value       = module.{{camelCase appName}}_production.project_id
+}
+
+output "wif_provider_name" {
+  description = "The Workload Identity Federation provider name"
+  value       = module.github_wif.provider_name
+}
+
+output "github_service_account" {
+  description = "The service account email for GitHub Actions"
+  value       = module.github_wif.service_account_email
+}
+
+output "firebase_config" {
+  description = "Firebase SDK configuration - use 'terraform output -json firebase_config' to get values"
+  value       = module.{{camelCase appName}}_production.firebase_config
+  sensitive   = true
+}
+
+{{#if enableAuth}}
+output "auth_enabled" {
+  description = "Authentication providers enabled"
+  value       = module.{{camelCase appName}}_production.auth_enabled
+  sensitive   = true
+}
+{{/if}}

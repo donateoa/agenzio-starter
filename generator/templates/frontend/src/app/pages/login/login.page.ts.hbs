@@ -1,0 +1,256 @@
+import { Component, inject } from '@angular/core';
+import { CommonModule } from '@angular/common';
+import { FormsModule } from '@angular/forms';
+import { Router, ActivatedRoute, RouterLink } from '@angular/router';
+import {
+  IonContent,
+  IonItem,
+  IonInput,
+  IonButton,
+  IonIcon,
+  IonSpinner,
+  IonText,
+} from '@ionic/angular/standalone';
+import { Auth, signInWithEmailAndPassword, GoogleAuthProvider, signInWithPopup } from '@angular/fire/auth';
+import { addIcons } from 'ionicons';
+import { logoGoogle, mailOutline, lockClosedOutline } from 'ionicons/icons';
+
+@Component({
+  selector: 'app-login',
+  standalone: true,
+  imports: [
+    CommonModule,
+    FormsModule,
+    RouterLink,
+    IonContent,
+    IonItem,
+    IonInput,
+    IonButton,
+    IonIcon,
+    IonSpinner,
+    IonText,
+  ],
+  template: `
+    <ion-content class="ion-padding">
+      <div class="login-container">
+        <div class="login-header">
+          <img src="assets/logo.svg" alt="Logo" class="logo" />
+          <h1>Benvenuto</h1>
+          <p>Accedi al tuo account per continuare</p>
+        </div>
+
+        <div class="login-form">
+{{#if authGoogle}}
+          <!-- Google Login -->
+          <ion-button
+            expand="block"
+            fill="outline"
+            (click)="loginWithGoogle()"
+            [disabled]="isLoading"
+            class="google-btn">
+            <ion-icon name="logo-google" slot="start"></ion-icon>
+            Continua con Google
+          </ion-button>
+
+          <div class="divider">
+            <span>oppure</span>
+          </div>
+{{/if}}
+
+{{#if authEmailPassword}}
+          <!-- Email/Password Login -->
+          <ion-item class="input-item" lines="none">
+            <ion-icon name="mail-outline" slot="start" color="medium"></ion-icon>
+            <ion-input
+              label="Email"
+              labelPlacement="floating"
+              type="email"
+              [(ngModel)]="email"
+              placeholder="email@esempio.it"
+              autocomplete="email">
+            </ion-input>
+          </ion-item>
+
+          <ion-item class="input-item" lines="none">
+            <ion-icon name="lock-closed-outline" slot="start" color="medium"></ion-icon>
+            <ion-input
+              label="Password"
+              labelPlacement="floating"
+              type="password"
+              [(ngModel)]="password"
+              placeholder="••••••••"
+              autocomplete="current-password"
+              (keyup.enter)="loginWithEmail()">
+            </ion-input>
+          </ion-item>
+
+          <ion-button
+            expand="block"
+            (click)="loginWithEmail()"
+            [disabled]="isLoading || !email || !password"
+            class="login-btn">
+            <ion-spinner *ngIf="isLoading" name="crescent"></ion-spinner>
+            <span *ngIf="!isLoading">Accedi</span>
+          </ion-button>
+{{/if}}
+
+          <ion-text color="danger" *ngIf="errorMessage" class="error-message">
+            <p>\{{ errorMessage }}</p>
+          </ion-text>
+        </div>
+
+        <div class="login-footer">
+          <p>
+            <a routerLink="/public/privacy">Privacy Policy</a>
+          </p>
+        </div>
+      </div>
+    </ion-content>
+  `,
+  styles: [`
+    .login-container {
+      max-width: 400px;
+      margin: 0 auto;
+      padding: 48px 24px;
+      min-height: 100%;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+    }
+    .login-header {
+      text-align: center;
+      margin-bottom: 48px;
+    }
+    .logo {
+      height: 64px;
+      margin-bottom: 24px;
+    }
+    h1 {
+      font-size: 1.75rem;
+      font-weight: 700;
+      margin-bottom: 8px;
+    }
+    .login-header p {
+      color: #666;
+    }
+    .login-form {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+    .input-item {
+      background: #f8f9fa;
+      border-radius: 12px;
+      --padding-start: 12px;
+      --background: #f8f9fa;
+      border: 1px solid #eee;
+    }
+    .google-btn {
+      --border-radius: 12px;
+      --border-width: 1px;
+    }
+    .login-btn {
+      --border-radius: 12px;
+      margin-top: 8px;
+    }
+    .divider {
+      display: flex;
+      align-items: center;
+      text-align: center;
+      margin: 8px 0;
+    }
+    .divider::before,
+    .divider::after {
+      content: '';
+      flex: 1;
+      border-bottom: 1px solid #eee;
+    }
+    .divider span {
+      padding: 0 16px;
+      color: #999;
+      font-size: 0.85rem;
+    }
+    .error-message {
+      text-align: center;
+    }
+    .error-message p {
+      margin: 8px 0;
+      font-size: 0.9rem;
+    }
+    .login-footer {
+      margin-top: 48px;
+      text-align: center;
+    }
+    .login-footer a {
+      color: var(--ion-color-primary);
+      text-decoration: none;
+    }
+  `],
+})
+export class LoginPage {
+  private auth = inject(Auth);
+  private router = inject(Router);
+  private route = inject(ActivatedRoute);
+
+  email = '';
+  password = '';
+  isLoading = false;
+  errorMessage = '';
+
+  constructor() {
+    addIcons({ logoGoogle, mailOutline, lockClosedOutline });
+  }
+
+  async loginWithEmail(): Promise<void> {
+    if (!this.email || !this.password) return;
+
+    this.isLoading = true;
+    this.errorMessage = '';
+
+    try {
+      await signInWithEmailAndPassword(this.auth, this.email, this.password);
+      this.navigateAfterLogin();
+    } catch (error: any) {
+      console.error('Login error:', error);
+      this.errorMessage = this.getErrorMessage(error.code);
+    } finally {
+      this.isLoading = false;
+    }
+  }
+
+  async loginWithGoogle(): Promise<void> {
+    this.isLoading = true;
+    this.errorMessage = '';
+
+    try {
+      const provider = new GoogleAuthProvider();
+      await signInWithPopup(this.auth, provider);
+      this.navigateAfterLogin();
+    } catch (error: any) {
+      console.error('Google login error:', error);
+      this.errorMessage = this.getErrorMessage(error.code);
+    } finally {
+      this.isLoading = false;
+    }
+  }
+
+  private navigateAfterLogin(): void {
+    const redirectTo = this.route.snapshot.queryParamMap.get('redirectTo') || '/app';
+    this.router.navigateByUrl(redirectTo);
+  }
+
+  private getErrorMessage(code: string): string {
+    switch (code) {
+      case 'auth/user-not-found':
+      case 'auth/wrong-password':
+      case 'auth/invalid-credential':
+        return 'Email o password non validi';
+      case 'auth/too-many-requests':
+        return 'Troppi tentativi. Riprova più tardi';
+      case 'auth/popup-closed-by-user':
+        return 'Login annullato';
+      default:
+        return 'Errore durante il login. Riprova';
+    }
+  }
+}

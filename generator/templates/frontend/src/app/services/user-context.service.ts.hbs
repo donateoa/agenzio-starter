@@ -1,0 +1,142 @@
+import { Injectable, inject } from '@angular/core';
+import { BaseUserContextService, PractitionerRole } from '@agenzio/core-frontend';
+import { doc, getDoc, docData } from '@angular/fire/firestore';
+import { user } from '@angular/fire/auth';
+import { PractitionerRoleService } from './api/practitioner-role.service';
+import { environment } from '../../environments/environment';
+import { combineLatest, Observable, of, timeout, timer } from 'rxjs';
+import { map, startWith, distinctUntilChanged, filter, switchMap, catchError, shareReplay, takeUntil } from
+'rxjs/operators';
+import { OrganizationService } from './api/organization.service';
+import { Organization } from '@agenzio/core-frontend';
+
+@Injectable({
+providedIn: 'root'
+})
+export class UserContextService extends BaseUserContextService {
+private practitionerRolesCache: PractitionerRole[] = [];
+
+private roleService = inject(PractitionerRoleService);
+private orgService = inject(OrganizationService);
+
+/**
+* Signal when the user context is fully loaded (auth + roles + active org data)
+*/
+public isReady$ = combineLatest([
+this.isBetaTester$,
+this.practitionerRole$,
+this.activeOrganizationId$
+]).pipe(
+switchMap(([beta, roles, orgId]) => {
+const authReady = beta !== null && roles !== null;
+if (!authReady) return of(false);
+
+// If no org selected, we are ready to show the switcher
+if (!orgId) return of(true);
+
+// If org selected, wait for the loading attempt to complete
+return this.activeOrganization$.pipe(
+map(() => true),
+startWith(false)
+);
+}),
+distinctUntilChanged(),
+shareReplay(1)
+);
+
+/**
+* Observable of the active organization data
+*/
+public activeOrganization$: Observable<Organization | null> = this.activeOrganizationId$.asObservable().pipe(
+  switchMap(id => {
+  if (!id) return of(null);
+  return this.orgService.get(id).pipe(
+  timeout(5000),
+  catchError(err => {
+  console.error('[UserContext] Failed to fetch active organization:', err);
+  return of(null);
+  })
+  );
+  }),
+  shareReplay(1)
+  );
+
+  protected override initBetaTesterCheck(): void {
+  // Emulator bypass
+  if (environment.useEmulators) {
+  this.isBetaTester$.next(true);
+  this.isVerified$.next(true);
+  setTimeout(() => this.refreshRoles());
+  return;
+  }
+
+  user(this.auth).subscribe(u => {
+  if (u) {
+  // Use timeout to ensure service is fully initialized (field initializers run after super())
+  setTimeout(() => this.refreshRoles());
+  const userRef = doc(this.firestore, `users/${u.uid}`);
+  docData(userRef).subscribe((data: any) => {
+  this.isBetaTester$.next(data?.betaTester === true);
+  this.isVerified$.next(data?.verified === true);
+  });
+  } else {
+  this.isBetaTester$.next(false);
+  this.isVerified$.next(false);
+  this.practitionerRole$.next([]);
+  }
+  });
+  }
+
+  /**
+  * Get practitioner roles for the current user
+  */
+  async getPractitionerRoles(): Promise<PractitionerRole[]> {
+    if (this.practitionerRole$.value && this.practitionerRole$.value.length > 0) {
+    return this.practitionerRole$.value;
+    }
+
+    return new Promise((resolve) => {
+    this.roleService.getMyRoles().subscribe({
+    next: (roles) => {
+    this.practitionerRole$.next(roles);
+    resolve(roles);
+    },
+    error: () => resolve([])
+    });
+    });
+    }
+
+    /**
+    * Refresh practitioner roles from backend
+    */
+    refreshRoles(): void {
+    if (!this.roleService) {
+    console.warn('[UserContext] roleService not yet available in refreshRoles');
+    return;
+    }
+
+    this.roleService.getMyRoles().subscribe({
+    next: (roles) => {
+    this.practitionerRole$.next(roles);
+
+    // Auto-select if only one organization
+    if (roles.length === 1 && !this.getActiveOrganizationId()) {
+    const role = roles[0];
+    if (role.status === 'ACCEPTED') {
+    const orgId = role.organizationId;
+    if (orgId) this.setActiveOrganization(orgId);
+    }
+    }
+    },
+    error: (err) => {
+    console.error('Failed to refresh roles', err);
+    this.practitionerRole$.next([]);
+    }
+    });
+    }
+
+    override clear(): void {
+    super.clear();
+    this.practitionerRolesCache = [];
+    }
+    }

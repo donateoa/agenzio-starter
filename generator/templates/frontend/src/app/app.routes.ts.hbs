@@ -1,0 +1,112 @@
+import { Routes } from '@angular/router';
+import { inject } from '@angular/core';
+import { Auth, user } from '@angular/fire/auth';
+import { map, take } from 'rxjs/operators';
+import { Router } from '@angular/router';
+
+// Simple auth guard - redirects to login if not authenticated
+export const authGuard = () => {
+  const auth = inject(Auth);
+  const router = inject(Router);
+
+  return user(auth).pipe(
+    take(1),
+    map(currentUser => {
+      if (currentUser) {
+        return true;
+      }
+      return router.createUrlTree(['/login']);
+    })
+  );
+};
+
+export const routes: Routes = [
+  {
+    path: '',
+    redirectTo: 'public/home',
+    pathMatch: 'full'
+  },
+
+  // Public routes (no authentication required)
+  {
+    path: 'public',
+    children: [
+      {
+        path: 'home',
+        loadComponent: () => import('./pages/public/home/home.page').then(m => m.HomePage)
+      },
+      {
+        path: 'privacy',
+        loadComponent: () => import('./pages/public/privacy/privacy.page').then(m => m.PrivacyPage)
+      }
+    ]
+  },
+
+  // Login
+  {
+    path: 'login',
+    loadComponent: () => import('./pages/login/login.page').then(m => m.LoginPage)
+  },
+
+  // Invite acceptance
+  {
+    path: 'invites/accept',
+    loadComponent: () => import('./pages/invites/accept/accept.page').then(m => m.AcceptInvitePage)
+  },
+
+  // Private routes (authentication required)
+  {
+    path: 'app',
+    canActivate: [authGuard],
+    loadComponent: () => import('./layouts/private-layout/private-layout.page').then(m => m.PrivateLayoutPage),
+    children: [
+      {
+        path: '',
+        redirectTo: 'home',
+        pathMatch: 'full'
+      },
+      {
+        path: 'home',
+        loadComponent: () => import('./pages/private/home/home.page').then(m => m.PrivateHomePage)
+      },
+      {
+        path: 'profile',
+        loadComponent: () => import('./pages/private/profile/profile.page').then(m => m.ProfilePage)
+      },
+      {
+        path: 'privacy',
+        loadComponent: () => import('./pages/private/privacy/privacy.page').then(m => m.PrivacyPage)
+      },
+      // Organization configuration
+      {
+        path: 'org-config',
+        children: [
+          {
+            path: 'team',
+            loadComponent: () => import('./pages/private/org-config/team/team.page').then(m => m.TeamPage)
+          },
+          {
+            path: 'settings',
+            loadComponent: () => import('./pages/private/org-config/settings/settings.page').then(m => m.OrgSettingsPage)
+          },
+{{#if includeStripe}}
+          {
+            path: 'subscription',
+            loadComponent: () => import('./pages/private/org-config/subscription/subscription.page').then(m => m.SubscriptionPage)
+          },
+          {
+            path: 'payments',
+            loadComponent: () => import('./pages/private/org-config/payments/payments.page').then(m => m.PaymentsPage)
+          },
+{{/if}}
+        ]
+      }
+    ]
+  },
+
+  // Catch-all redirect
+  {
+    path: '**',
+    redirectTo: 'public/home'
+  }
+];

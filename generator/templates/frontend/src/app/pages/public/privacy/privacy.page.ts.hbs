@@ -1,0 +1,100 @@
+import { Component } from '@angular/core';
+import { CommonModule } from '@angular/common';
+import { IonContent } from '@ionic/angular/standalone';
+import { PublicHeaderComponent } from '@agenzio/core-frontend';
+
+@Component({
+  selector: 'app-privacy',
+  standalone: true,
+  imports: [CommonModule, IonContent, PublicHeaderComponent],
+  template: `
+    <agenzio-public-header
+      [brandName]="'{{displayName}}'"
+      [logoUrl]="'assets/logo.svg'"
+      [homeLink]="'/public/home'"
+      [privateAreaLink]="'/app'"
+      [privateAreaLabel]="'Area Clienti'">
+    </agenzio-public-header>
+
+    <ion-content class="ion-padding">
+      <div class="privacy-content">
+        <h1>Privacy Policy</h1>
+        <p class="last-updated">Ultimo aggiornamento: {{currentDate}}</p>
+
+        <section>
+          <h2>1. Introduzione</h2>
+          <p>
+            La presente Privacy Policy descrive come {{displayName}} raccoglie, utilizza e protegge
+            le informazioni personali degli utenti.
+          </p>
+        </section>
+
+        <section>
+          <h2>2. Dati Raccolti</h2>
+          <p>
+            Raccogliamo i seguenti tipi di dati:
+          </p>
+          <ul>
+            <li>Informazioni di registrazione (nome, email)</li>
+            <li>Dati di utilizzo del servizio</li>
+            <li>Informazioni tecniche (IP, browser)</li>
+          </ul>
+        </section>
+
+        <section>
+          <h2>3. Utilizzo dei Dati</h2>
+          <p>
+            I dati raccolti vengono utilizzati per:
+          </p>
+          <ul>
+            <li>Fornire e migliorare i nostri servizi</li>
+            <li>Comunicare con gli utenti</li>
+            <li>Garantire la sicurezza della piattaforma</li>
+          </ul>
+        </section>
+
+        <section>
+          <h2>4. Contatti</h2>
+          <p>
+            Per domande sulla privacy, contattaci all'indirizzo: privacy@example.com
+          </p>
+        </section>
+      </div>
+    </ion-content>
+  `,
+  styles: [`
+    .privacy-content {
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 24px 0;
+    }
+    h1 {
+      font-size: 2rem;
+      margin-bottom: 8px;
+    }
+    .last-updated {
+      color: #666;
+      font-size: 0.9rem;
+      margin-bottom: 32px;
+    }
+    section {
+      margin-bottom: 32px;
+    }
+    h2 {
+      font-size: 1.25rem;
+      margin-bottom: 16px;
+      color: var(--ion-color-primary);
+    }
+    p, li {
+      line-height: 1.7;
+      color: #444;
+    }
+    ul {
+      padding-left: 24px;
+    }
+    li {
+      margin-bottom: 8px;
+    }
+  `],
+})
+export class PrivacyPage {}

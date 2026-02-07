@@ -1,0 +1,34 @@
+import { defineString, defineSecret } from 'firebase-functions/params';
+
+// Define secrets as Firebase Function parameters
+// These will be loaded from Firebase Secret Manager or environment variables
+
+// Common secrets
+export const resendApiKey = defineSecret('RESEND_API_KEY');
+export const fromEmailSecret = defineString('FROM_EMAIL', { default: 'noreply@{{appName}}.{{domain}}' });
+export const frontendUrlSecret = defineString('FRONTEND_URL', { default: 'https://{{appName}}.web.app' });
+{{#if includeStripe}}
+
+// Stripe secrets
+export const stripeSecretKey = defineSecret('STRIPE_SECRET_KEY');
+export const stripeWebhookSecret = defineSecret('STRIPE_WEBHOOK_SECRET');
+{{/if}}
+{{#if includeFIC}}
+
+// Fatture in Cloud secrets
+export const ficClientId = defineSecret('FIC_CLIENT_ID');
+export const ficClientSecret = defineSecret('FIC_CLIENT_SECRET');
+{{/if}}
+{{#if includeGemini}}
+
+// Google AI secrets
+export const geminiApiKey = defineSecret('GEMINI_API_KEY');
+{{/if}}
+
+// Export config object for easy access
+export const config = {
+  app: {
+    name: '{{appName}}',
+    displayName: '{{displayName}}'
+  }
+};

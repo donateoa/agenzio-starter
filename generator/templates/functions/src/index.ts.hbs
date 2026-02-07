@@ -1,0 +1,112 @@
+import * as dotenv from 'dotenv';
+import * as path from 'path';
+
+// Load local secrets/env for development
+if (process.env.DEV_SERVER === 'true' || process.env.FUNCTIONS_EMULATOR === 'true' || !process.env.FIREBASE_CONFIG) {
+console.log('[Index] Loading local .env/.secret.local for development...');
+dotenv.config({ path: path.resolve(__dirname, '../.secret.local') });
+dotenv.config({ path: path.resolve(__dirname, '../.env') });
+}
+
+// Set emulator environment variables BEFORE any Firebase SDK imports
+if (process.env.FUNCTIONS_EMULATOR === 'true') {
+process.env.FIREBASE_AUTH_EMULATOR_HOST = 'localhost:9099';
+process.env.FIRESTORE_EMULATOR_HOST = 'localhost:8080';
+console.log('[Index] Emulator mode enabled. Auth Host:', process.env.FIREBASE_AUTH_EMULATOR_HOST);
+}
+
+import * as functions from 'firebase-functions/v2';
+import * as admin from 'firebase-admin';
+import express from 'express';
+import cors from 'cors';
+
+// Firestore settings
+const firestoreSettings: admin.firestore.Settings = {
+ignoreUndefinedProperties: true
+};
+
+if (process.env.FUNCTIONS_EMULATOR === 'true') {
+(firestoreSettings as any).host = 'localhost:8080';
+(firestoreSettings as any).ssl = false;
+}
+
+// Initialize Firebase Admin with explicit projectId
+const projectId = process.env.GOOGLE_CLOUD_PROJECT || process.env.GCLOUD_PROJECT || '{{appName}}-stg';
+if (!admin.apps.length) {
+admin.initializeApp({ projectId });
+console.log('[Index] Firebase Admin initialized with projectId:', projectId);
+}
+const db = admin.firestore();
+db.settings(firestoreSettings);
+
+export { db };
+
+// Import routes (after Firebase is initialized)
+import usersRoute from './routes/api/users.route';
+import organizationsRoute from './routes/api/organizations.route';
+import practitionerRolesRoute from './routes/api/practitioner-roles.route';
+{{#if includeStripe}}
+import paymentsRoute from './routes/api/payments.route';
+{{/if}}
+
+// Initialize Express app
+const app = express();
+
+// Middleware
+app.use(cors({ origin: true }));
+app.use(express.json());
+
+// Health check endpoint
+app.get('/health', (req, res) => {
+res.json({
+status: 'ok',
+app: '{{appName}}',
+timestamp: new Date().toISOString()
+});
+});
+
+// API routes
+app.get('/api/v1/status', (req, res) => {
+res.json({
+message: 'Welcome to {{displayName}} API',
+version: '1.0.0'
+});
+});
+
+// Mount routes
+app.use('/api/users', usersRoute);
+app.use('/api/me/organizations', organizationsRoute);
+app.use('/api/me/practitionerRoles', practitionerRolesRoute);
+{{#if includeStripe}}
+app.use('/api/payments', paymentsRoute);
+{{/if}}
+
+// Export the Express app as a Firebase Cloud Function
+export const api = functions.https.onRequest(
+{
+region: '{{region}}',
+memory: '256MiB',
+timeoutSeconds: 60,
+secrets: [
+'RESEND_API_KEY',
+{{#if includeStripe}}
+'STRIPE_SECRET_KEY',
+'STRIPE_WEBHOOK_SECRET',
+{{/if}}
+{{#if includeFIC}}
+'FIC_CLIENT_ID',
+'FIC_CLIENT_SECRET',
+{{/if}}
+]
+},
+app
+);
+
+// Start local dev server
+if (process.env.DEV_SERVER === 'true') {
+const port = process.env.PORT || 3000;
+app.listen(port, () => {
+console.log(`Server is running on http://localhost:${port}`);
+console.log(`Firestore Emulator: ${process.env.FIRESTORE_EMULATOR_HOST}`);
+});
+}

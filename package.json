@@ -1,0 +1,25 @@
+{
+  "name": "agenzio-starter",
+  "version": "1.0.0",
+  "description": "Firebase Angular Ionic starter with Terraform infrastructure",
+  "private": false,
+  "scripts": {
+    "generate": "cd generator && npx plop",
+    "generate:app": "cd generator && npx plop app",
+    "update-firebase-config": "node generator/scripts/update-firebase-config.js"
+  },
+  "keywords": [
+    "firebase",
+    "angular",
+    "ionic",
+    "terraform",
+    "starter",
+    "gcp",
+    "cloud-functions"
+  ],
+  "author": "",
+  "license": "MIT",
+  "engines": {
+    "node": ">=22.0.0"
+  }
+}

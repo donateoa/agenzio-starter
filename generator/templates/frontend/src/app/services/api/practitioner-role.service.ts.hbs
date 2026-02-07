@@ -1,0 +1,10 @@
+import { Injectable } from '@angular/core';
+import { BasePractitionerRoleService } from '@agenzio/core-frontend';
+import { environment } from '../../../environments/environment';
+
+@Injectable({
+providedIn: 'root'
+})
+export class PractitionerRoleService extends BasePractitionerRoleService {
+protected override apiUrl = environment.apiUrl;
+}

@@ -1,0 +1,60 @@
+---
+layout: home
+title: Home
+nav_order: 1
+---
+
+# {{displayName}}
+
+{{description}}
+
+## Quick Start
+
+### Prerequisites
+
+- Node.js 22+
+- npm 10+
+- Firebase CLI
+- Angular CLI
+
+### Development
+
+```bash
+# Install dependencies
+npm install
+
+# Start the frontend
+cd apps/{{appName}}/frontend
+npm start
+
+# Start the emulators (in another terminal)
+cd apps/{{appName}}
+firebase emulators:start
+```
+
+### Deployment
+
+Deployment happens automatically via GitHub Actions when you push to:
+- `develop` branch → Staging
+- `main` branch → Production
+
+## Project Structure
+
+```
+apps/{{appName}}/
+├── frontend/          # Angular Ionic app
+│   ├── src/
+│   └── package.json
+├── functions/         # Firebase Cloud Functions
+│   ├── src/
+│   └── package.json
+├── docs/             # This documentation
+├── firebase.json     # Firebase configuration
+└── firestore.rules   # Firestore security rules
+```
+
+## Resources
+
+- [Angular Documentation](https://angular.io/docs)
+- [Ionic Documentation](https://ionicframework.com/docs)
+- [Firebase Documentation](https://firebase.google.com/docs)

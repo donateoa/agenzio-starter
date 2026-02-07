@@ -1,0 +1,123 @@
+{{#if includeStripe}}
+import { Injectable, inject } from '@angular/core';
+import { HttpClient } from '@angular/common/http';
+import { Observable } from 'rxjs';
+import { environment } from '../../../environments/environment';
+
+interface SubscriptionInfo {
+  status: 'active' | 'trialing' | 'past_due' | 'canceled' | 'none';
+  planName?: string;
+  currentPeriodEnd?: Date;
+  cancelAtPeriodEnd?: boolean;
+}
+
+interface Invoice {
+  id: string;
+  date: Date;
+  amount: number;
+  status: string;
+  pdfUrl?: string;
+}
+
+interface ConnectStatus {
+  connected: boolean;
+  accountId?: string;
+  chargesEnabled?: boolean;
+  payoutsEnabled?: boolean;
+}
+
+interface Transaction {
+  id: string;
+  date: Date;
+  description: string;
+  amount: number;
+  type: 'income' | 'expense';
+  status: string;
+}
+
+interface UrlResponse {
+  url: string;
+}
+
+{{#if includeFIC}}
+interface FICStatus {
+  connected: boolean;
+  companyName?: string;
+}
+{{/if}}
+
+@Injectable({
+  providedIn: 'root',
+})
+export class PaymentsService {
+  private http = inject(HttpClient);
+  private apiUrl = environment.apiUrl;
+
+  // === Subscription ===
+
+  getSubscriptionStatus(): Observable<SubscriptionInfo> {
+    return this.http.get<SubscriptionInfo>(`${this.apiUrl}/payments/subscription/status`);
+  }
+
+  createCheckoutSession(): Observable<UrlResponse> {
+    return this.http.post<UrlResponse>(`${this.apiUrl}/payments/subscription/checkout`, {});
+  }
+
+  createPortalSession(): Observable<UrlResponse> {
+    return this.http.post<UrlResponse>(`${this.apiUrl}/payments/portal`, {});
+  }
+
+  syncSubscription(): Observable<void> {
+    return this.http.post<void>(`${this.apiUrl}/payments/subscription/sync`, {});
+  }
+
+  getInvoices(): Observable<Invoice[]> {
+    return this.http.get<Invoice[]>(`${this.apiUrl}/payments/invoices`);
+  }
+
+  // === Stripe Connect ===
+
+  getConnectStatus(): Observable<ConnectStatus> {
+    return this.http.get<ConnectStatus>(`${this.apiUrl}/payments/connect/status`);
+  }
+
+  createConnectOnboarding(): Observable<UrlResponse> {
+    return this.http.post<UrlResponse>(`${this.apiUrl}/payments/connect/onboard`, {});
+  }
+
+  getConnectDashboardLink(): Observable<UrlResponse> {
+    return this.http.get<UrlResponse>(`${this.apiUrl}/payments/connect/dashboard`);
+  }
+
+  // === Transactions ===
+
+  getTransactions(): Observable<Transaction[]> {
+    return this.http.get<Transaction[]>(`${this.apiUrl}/payments/transactions`);
+  }
+
+  exportTransactionsCSV(): Observable<Blob> {
+    return this.http.get(`${this.apiUrl}/payments/transactions/export`, {
+      responseType: 'blob',
+    });
+  }
+
+{{#if includeFIC}}
+  // === Fatture in Cloud ===
+
+  getFICStatus(): Observable<FICStatus> {
+    return this.http.get<FICStatus>(`${this.apiUrl}/payments/fic/status`);
+  }
+
+  getFICAuthUrl(): Observable<UrlResponse> {
+    return this.http.get<UrlResponse>(`${this.apiUrl}/payments/fic/auth`);
+  }
+
+  disconnectFIC(): Observable<void> {
+    return this.http.post<void>(`${this.apiUrl}/payments/fic/disconnect`, {});
+  }
+{{/if}}
+}
+{{else}}
+// Stripe not included - this service should not be generated
+export class PaymentsService {}
+{{/if}}

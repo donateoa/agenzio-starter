@@ -1,0 +1,215 @@
+import { Component, OnInit, inject } from '@angular/core';
+import { CommonModule } from '@angular/common';
+import { FormBuilder, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
+import {
+  IonContent,
+  IonCard,
+  IonCardHeader,
+  IonCardTitle,
+  IonCardContent,
+  IonItem,
+  IonLabel,
+  IonInput,
+  IonButton,
+  IonIcon,
+  IonSpinner,
+  ToastController,
+} from '@ionic/angular/standalone';
+import { PrivateHeaderComponent } from '@agenzio/core-frontend';
+import { Auth } from '@angular/fire/auth';
+import { addIcons } from 'ionicons';
+import { personOutline, saveOutline, refreshOutline } from 'ionicons/icons';
+import { ProfileService } from '../../../services/api/profile.service';
+
+@Component({
+  selector: 'app-profile',
+  standalone: true,
+  imports: [
+    CommonModule,
+    ReactiveFormsModule,
+    IonContent,
+    IonCard,
+    IonCardHeader,
+    IonCardTitle,
+    IonCardContent,
+    IonItem,
+    IonLabel,
+    IonInput,
+    IonButton,
+    IonIcon,
+    IonSpinner,
+    PrivateHeaderComponent,
+  ],
+  template: `
+    <agenzio-private-header
+      [brandName]="'{{displayName}}'"
+      [logoUrl]="'assets/logo.svg'"
+      [homeLink]="'/app/home'"
+      [subtitle]="'Profilo'"
+      [menuId]="'main-menu'">
+    </agenzio-private-header>
+
+    <ion-content class="ion-padding">
+      <div class="profile-container">
+        <ion-card>
+          <ion-card-header>
+            <ion-card-title>
+              <ion-icon name="person-outline"></ion-icon>
+              Informazioni Personali
+            </ion-card-title>
+          </ion-card-header>
+          <ion-card-content>
+            <form [formGroup]="profileForm" (ngSubmit)="save()">
+              <ion-item lines="none" class="input-item">
+                <ion-label position="stacked">Nome</ion-label>
+                <ion-input formControlName="firstName" placeholder="Il tuo nome"></ion-input>
+              </ion-item>
+
+              <ion-item lines="none" class="input-item">
+                <ion-label position="stacked">Cognome</ion-label>
+                <ion-input formControlName="lastName" placeholder="Il tuo cognome"></ion-input>
+              </ion-item>
+
+              <ion-item lines="none" class="input-item">
+                <ion-label position="stacked">Email</ion-label>
+                <ion-input formControlName="email" type="email" readonly></ion-input>
+              </ion-item>
+
+              <ion-item lines="none" class="input-item">
+                <ion-label position="stacked">Telefono</ion-label>
+                <ion-input formControlName="phone" type="tel" placeholder="+39 ..."></ion-input>
+              </ion-item>
+
+              <div class="actions">
+                <ion-button type="button" fill="outline" (click)="cancel()" [disabled]="isSaving">
+                  <ion-icon name="refresh-outline" slot="start"></ion-icon>
+                  Annulla
+                </ion-button>
+                <ion-button type="submit" [disabled]="!profileForm.valid || isSaving">
+                  <ng-container *ngIf="isSaving; else saveText">
+                    <ion-spinner name="crescent"></ion-spinner>
+                  </ng-container>
+                  <ng-template #saveText>
+                    <ion-icon name="save-outline" slot="start"></ion-icon>
+                    Salva
+                  </ng-template>
+                </ion-button>
+              </div>
+            </form>
+          </ion-card-content>
+        </ion-card>
+      </div>
+    </ion-content>
+  `,
+  styles: [`
+    .profile-container {
+      max-width: 600px;
+      margin: 0 auto;
+    }
+    ion-card-title {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    ion-card-title ion-icon {
+      font-size: 24px;
+      color: var(--ion-color-primary);
+    }
+    .input-item {
+      --background: #f8f9fa;
+      --border-radius: 8px;
+      margin-bottom: 16px;
+    }
+    .actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 12px;
+      margin-top: 24px;
+    }
+  `],
+})
+export class ProfilePage implements OnInit {
+  private auth = inject(Auth);
+  private fb = inject(FormBuilder);
+  private profileService = inject(ProfileService);
+  private toastCtrl = inject(ToastController);
+
+  profileForm!: FormGroup;
+  isSaving = false;
+
+  constructor() {
+    addIcons({ personOutline, saveOutline, refreshOutline });
+  }
+
+  ngOnInit(): void {
+    this.initForm();
+    this.loadProfile();
+  }
+
+  private initForm(): void {
+    const user = this.auth.currentUser;
+    this.profileForm = this.fb.group({
+      firstName: ['', Validators.required],
+      lastName: ['', Validators.required],
+      email: [{ value: user?.email || '', disabled: true }],
+      phone: [''],
+    });
+  }
+
+  private loadProfile(): void {
+    this.profileService.getProfile().subscribe({
+      next: (profile) => {
+        this.profileForm.patchValue({
+          firstName: profile.firstName || '',
+          lastName: profile.lastName || '',
+          phone: profile.phone || '',
+        });
+      },
+      error: () => {
+        // First time - use Auth data
+        const user = this.auth.currentUser;
+        const displayName = user?.displayName || '';
+        const [firstName, ...lastParts] = displayName.split(' ');
+        this.profileForm.patchValue({
+          firstName: firstName || '',
+          lastName: lastParts.join(' ') || '',
+        });
+      }
+    });
+  }
+
+  save(): void {
+    if (!this.profileForm.valid) {
+      this.profileForm.markAllAsTouched();
+      return;
+    }
+
+    this.isSaving = true;
+    const data = this.profileForm.getRawValue();
+
+    this.profileService.updateProfile(data).subscribe({
+      next: async () => {
+        const toast = await this.toastCtrl.create({
+          message: 'Profilo aggiornato con successo',
+          duration: 2000,
+          color: 'success',
+        });
+        await toast.present();
+        this.isSaving = false;
+      },
+      error: async () => {
+        const toast = await this.toastCtrl.create({
+          message: 'Errore durante il salvataggio',
+          duration: 2000,
+          color: 'danger',
+        });
+        await toast.present();
+        this.isSaving = false;
+      }
+    });
+  }
+
+  cancel(): void {
+    this.loadProfile();
+  }
+}

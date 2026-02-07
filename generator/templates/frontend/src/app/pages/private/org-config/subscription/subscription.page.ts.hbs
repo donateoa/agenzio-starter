@@ -1,0 +1,382 @@
+{{#if includeStripe}}
+import { Component, OnInit, inject } from '@angular/core';
+import { CommonModule } from '@angular/common';
+import {
+  IonContent,
+  IonCard,
+  IonCardHeader,
+  IonCardTitle,
+  IonCardContent,
+  IonItem,
+  IonLabel,
+  IonBadge,
+  IonButton,
+  IonIcon,
+  IonSpinner,
+  IonList,
+  ToastController,
+} from '@ionic/angular/standalone';
+import { PrivateHeaderComponent, Organization } from '@agenzio/core-frontend';
+import { UserContextService } from '../../../../services/user-context.service';
+import { OrganizationService } from '../../../../services/api/organization.service';
+import { PaymentsService } from '../../../../services/api/payments.service';
+import { addIcons } from 'ionicons';
+import {
+  cardOutline,
+  checkmarkCircleOutline,
+  closeCircleOutline,
+  refreshOutline,
+  receiptOutline,
+  openOutline,
+} from 'ionicons/icons';
+import { firstValueFrom } from 'rxjs';
+import { switchMap, filter, catchError } from 'rxjs/operators';
+import { of } from 'rxjs';
+
+interface SubscriptionInfo {
+  status: 'active' | 'trialing' | 'past_due' | 'canceled' | 'none';
+  planName?: string;
+  currentPeriodEnd?: Date;
+  cancelAtPeriodEnd?: boolean;
+}
+
+interface Invoice {
+  id: string;
+  date: Date;
+  amount: number;
+  status: string;
+  pdfUrl?: string;
+}
+
+@Component({
+  selector: 'app-subscription',
+  standalone: true,
+  imports: [
+    CommonModule,
+    IonContent,
+    IonCard,
+    IonCardHeader,
+    IonCardTitle,
+    IonCardContent,
+    IonItem,
+    IonLabel,
+    IonBadge,
+    IonButton,
+    IonIcon,
+    IonSpinner,
+    IonList,
+    PrivateHeaderComponent,
+  ],
+  template: `
+    <agenzio-private-header
+      [brandName]="'{{displayName}}'"
+      [logoUrl]="'assets/logo.svg'"
+      [homeLink]="'/app/home'"
+      [subtitle]="'Abbonamento'"
+      [menuId]="'main-menu'"
+      [activeOrganization]="activeOrganization">
+    </agenzio-private-header>
+
+    <ion-content class="ion-padding">
+      <div class="subscription-container">
+        <h1>
+          <ion-icon name="card-outline"></ion-icon>
+          Abbonamento
+        </h1>
+        <p class="subtitle" *ngIf="activeOrganization">
+          Gestisci l'abbonamento di <strong>\{{ activeOrganization.name }}</strong>
+        </p>
+
+        <div *ngIf="isLoading" class="loading-container">
+          <ion-spinner name="crescent"></ion-spinner>
+        </div>
+
+        <ng-container *ngIf="!isLoading">
+          <!-- Current Plan Card -->
+          <ion-card>
+            <ion-card-header>
+              <ion-card-title>Piano Attuale</ion-card-title>
+            </ion-card-header>
+            <ion-card-content>
+              <div class="plan-info">
+                <div class="plan-name">
+                  <h2>\{{ subscription?.planName || 'Nessun piano attivo' }}</h2>
+                  <ion-badge [color]="getStatusColor(subscription?.status)">
+                    <ion-icon [name]="getStatusIcon(subscription?.status)"></ion-icon>
+                    \{{ getStatusLabel(subscription?.status) }}
+                  </ion-badge>
+                </div>
+                <p *ngIf="subscription?.currentPeriodEnd" class="renewal-date">
+                  \{{ subscription?.cancelAtPeriodEnd ? 'Termina il' : 'Si rinnova il' }}:
+                  \{{ subscription?.currentPeriodEnd | date:'dd/MM/yyyy' }}
+                </p>
+              </div>
+
+              <div class="actions">
+                <ion-button *ngIf="!subscription || subscription.status === 'none'" (click)="startCheckout()">
+                  Attiva Abbonamento
+                </ion-button>
+                <ion-button *ngIf="subscription && subscription.status !== 'none'" fill="outline" (click)="openPortal()">
+                  <ion-icon name="open-outline" slot="start"></ion-icon>
+                  Gestisci su Stripe
+                </ion-button>
+                <ion-button fill="clear" (click)="syncSubscription()">
+                  <ion-icon name="refresh-outline" slot="icon-only"></ion-icon>
+                </ion-button>
+              </div>
+            </ion-card-content>
+          </ion-card>
+
+          <!-- Invoices Card -->
+          <ion-card>
+            <ion-card-header>
+              <ion-card-title>
+                <ion-icon name="receipt-outline"></ion-icon>
+                Storico Fatture
+              </ion-card-title>
+            </ion-card-header>
+            <ion-card-content>
+              <ion-list lines="none" *ngIf="invoices.length > 0; else noInvoices">
+                <ion-item *ngFor="let invoice of invoices" class="invoice-item">
+                  <ion-label>
+                    <h3>\{{ invoice.date | date:'dd/MM/yyyy' }}</h3>
+                    <p>\{{ invoice.amount | currency:'EUR' }}</p>
+                  </ion-label>
+                  <ion-badge [color]="invoice.status === 'paid' ? 'success' : 'warning'" slot="end">
+                    \{{ invoice.status === 'paid' ? 'Pagata' : 'In attesa' }}
+                  </ion-badge>
+                  <ion-button *ngIf="invoice.pdfUrl" fill="clear" slot="end" [href]="invoice.pdfUrl" target="_blank">
+                    <ion-icon name="open-outline" slot="icon-only"></ion-icon>
+                  </ion-button>
+                </ion-item>
+              </ion-list>
+              <ng-template #noInvoices>
+                <p class="no-data">Nessuna fattura disponibile</p>
+              </ng-template>
+            </ion-card-content>
+          </ion-card>
+        </ng-container>
+      </div>
+    </ion-content>
+  `,
+  styles: [`
+    .subscription-container {
+      max-width: 800px;
+      margin: 0 auto;
+    }
+    h1 {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 1.5rem;
+      margin-bottom: 8px;
+    }
+    h1 ion-icon {
+      color: var(--ion-color-primary);
+    }
+    .subtitle {
+      color: #666;
+      margin-bottom: 24px;
+    }
+    .loading-container {
+      display: flex;
+      justify-content: center;
+      padding: 48px;
+    }
+    ion-card-title {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    ion-card-title ion-icon {
+      font-size: 20px;
+      color: var(--ion-color-primary);
+    }
+    .plan-info {
+      margin-bottom: 24px;
+    }
+    .plan-name {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 8px;
+    }
+    .plan-name h2 {
+      margin: 0;
+      font-size: 1.25rem;
+      font-weight: 600;
+    }
+    .plan-name ion-badge {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+    }
+    .renewal-date {
+      color: #666;
+      margin: 0;
+    }
+    .actions {
+      display: flex;
+      gap: 12px;
+      align-items: center;
+    }
+    .invoice-item {
+      --padding-start: 0;
+      --inner-padding-end: 0;
+    }
+    .invoice-item h3 {
+      font-weight: 600;
+      margin-bottom: 4px;
+    }
+    .no-data {
+      text-align: center;
+      color: #666;
+      padding: 24px;
+    }
+  `],
+})
+export class SubscriptionPage implements OnInit {
+  private userContext = inject(UserContextService);
+  private orgService = inject(OrganizationService);
+  private paymentsService = inject(PaymentsService);
+  private toastCtrl = inject(ToastController);
+
+  activeOrganization: Organization | null = null;
+  subscription: SubscriptionInfo | null = null;
+  invoices: Invoice[] = [];
+  isLoading = false;
+
+  constructor() {
+    addIcons({
+      cardOutline,
+      checkmarkCircleOutline,
+      closeCircleOutline,
+      refreshOutline,
+      receiptOutline,
+      openOutline,
+    });
+  }
+
+  ngOnInit(): void {
+    this.userContext.getActiveOrganizationId$().pipe(
+      filter(id => !!id),
+      switchMap(id => this.orgService.get(id!).pipe(catchError(() => of(null))))
+    ).subscribe(org => {
+      this.activeOrganization = org;
+      if (org) {
+        this.loadData();
+      }
+    });
+  }
+
+  async loadData(): Promise<void> {
+    this.isLoading = true;
+    try {
+      const [subscription, invoices] = await Promise.all([
+        firstValueFrom(this.paymentsService.getSubscriptionStatus()),
+        firstValueFrom(this.paymentsService.getInvoices()),
+      ]);
+      this.subscription = subscription;
+      this.invoices = invoices;
+    } catch (error) {
+      console.error('Error loading subscription data', error);
+    } finally {
+      this.isLoading = false;
+    }
+  }
+
+  async startCheckout(): Promise<void> {
+    try {
+      const { url } = await firstValueFrom(this.paymentsService.createCheckoutSession());
+      window.location.href = url;
+    } catch (error) {
+      const toast = await this.toastCtrl.create({
+        message: 'Errore durante l\'avvio del checkout',
+        duration: 2000,
+        color: 'danger',
+      });
+      await toast.present();
+    }
+  }
+
+  async openPortal(): Promise<void> {
+    try {
+      const { url } = await firstValueFrom(this.paymentsService.createPortalSession());
+      window.location.href = url;
+    } catch (error) {
+      const toast = await this.toastCtrl.create({
+        message: 'Errore durante l\'apertura del portale',
+        duration: 2000,
+        color: 'danger',
+      });
+      await toast.present();
+    }
+  }
+
+  async syncSubscription(): Promise<void> {
+    try {
+      await firstValueFrom(this.paymentsService.syncSubscription());
+      await this.loadData();
+      const toast = await this.toastCtrl.create({
+        message: 'Stato abbonamento aggiornato',
+        duration: 2000,
+        color: 'success',
+      });
+      await toast.present();
+    } catch (error) {
+      const toast = await this.toastCtrl.create({
+        message: 'Errore durante la sincronizzazione',
+        duration: 2000,
+        color: 'danger',
+      });
+      await toast.present();
+    }
+  }
+
+  getStatusColor(status?: string): string {
+    switch (status) {
+      case 'active':
+      case 'trialing':
+        return 'success';
+      case 'past_due':
+        return 'warning';
+      case 'canceled':
+      case 'none':
+      default:
+        return 'medium';
+    }
+  }
+
+  getStatusIcon(status?: string): string {
+    switch (status) {
+      case 'active':
+      case 'trialing':
+        return 'checkmark-circle-outline';
+      case 'past_due':
+      case 'canceled':
+      case 'none':
+      default:
+        return 'close-circle-outline';
+    }
+  }
+
+  getStatusLabel(status?: string): string {
+    switch (status) {
+      case 'active':
+        return 'Attivo';
+      case 'trialing':
+        return 'Prova';
+      case 'past_due':
+        return 'Scaduto';
+      case 'canceled':
+        return 'Cancellato';
+      case 'none':
+      default:
+        return 'Non attivo';
+    }
+  }
+}
+{{else}}
+// Stripe not included - this page should not be generated
+export {}
+{{/if}}

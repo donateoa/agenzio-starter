@@ -1,0 +1,278 @@
+import { Component, OnInit, inject } from '@angular/core';
+import { CommonModule } from '@angular/common';
+import { ActivatedRoute, Router } from '@angular/router';
+import {
+  IonContent,
+  IonCard,
+  IonCardContent,
+  IonButton,
+  IonIcon,
+  IonSpinner,
+} from '@ionic/angular/standalone';
+import { PublicHeaderComponent } from '@agenzio/core-frontend';
+import { OrganizationService } from '../../../services/api/organization.service';
+import { addIcons } from 'ionicons';
+import {
+  checkmarkCircleOutline,
+  closeCircleOutline,
+  mailOpenOutline,
+  homeOutline,
+} from 'ionicons/icons';
+import { firstValueFrom } from 'rxjs';
+
+type InviteStatus = 'loading' | 'pending' | 'accepted' | 'error';
+
+@Component({
+  selector: 'app-accept-invite',
+  standalone: true,
+  imports: [
+    CommonModule,
+    IonContent,
+    IonCard,
+    IonCardContent,
+    IonButton,
+    IonIcon,
+    IonSpinner,
+    PublicHeaderComponent,
+  ],
+  template: `
+    <agenzio-public-header
+      [brandName]="'{{displayName}}'"
+      [logoUrl]="'assets/logo.svg'"
+      [privateAreaLink]="'/login'">
+    </agenzio-public-header>
+
+    <ion-content class="ion-padding">
+      <div class="invite-container">
+        <!-- Loading State -->
+        <ion-card *ngIf="status === 'loading'" class="status-card">
+          <ion-card-content>
+            <ion-spinner name="crescent"></ion-spinner>
+            <h2>Verifica invito in corso...</h2>
+          </ion-card-content>
+        </ion-card>
+
+        <!-- Pending State -->
+        <ion-card *ngIf="status === 'pending'" class="status-card">
+          <ion-card-content>
+            <div class="icon-box pending">
+              <ion-icon name="mail-open-outline"></ion-icon>
+            </div>
+            <h2>Sei stato invitato!</h2>
+            <p>
+              Sei stato invitato a collaborare con
+              <strong>\{{ organizationName }}</strong>.
+            </p>
+            <p class="role-info" *ngIf="roleName">
+              Il tuo ruolo sarà: <strong>\{{ roleName }}</strong>
+            </p>
+            <div class="actions">
+              <ion-button expand="block" (click)="acceptInvite()" [disabled]="isProcessing">
+                <ng-container *ngIf="isProcessing; else acceptText">
+                  <ion-spinner name="crescent"></ion-spinner>
+                </ng-container>
+                <ng-template #acceptText>
+                  <ion-icon name="checkmark-circle-outline" slot="start"></ion-icon>
+                  Accetta Invito
+                </ng-template>
+              </ion-button>
+              <ion-button expand="block" fill="outline" color="medium" (click)="rejectInvite()" [disabled]="isProcessing">
+                <ion-icon name="close-circle-outline" slot="start"></ion-icon>
+                Rifiuta
+              </ion-button>
+            </div>
+          </ion-card-content>
+        </ion-card>
+
+        <!-- Accepted State -->
+        <ion-card *ngIf="status === 'accepted'" class="status-card">
+          <ion-card-content>
+            <div class="icon-box success">
+              <ion-icon name="checkmark-circle-outline"></ion-icon>
+            </div>
+            <h2>Invito Accettato!</h2>
+            <p>
+              Ora fai parte di <strong>\{{ organizationName }}</strong>.
+            </p>
+            <ion-button expand="block" (click)="goToHome()">
+              <ion-icon name="home-outline" slot="start"></ion-icon>
+              Vai alla Dashboard
+            </ion-button>
+          </ion-card-content>
+        </ion-card>
+
+        <!-- Error State -->
+        <ion-card *ngIf="status === 'error'" class="status-card">
+          <ion-card-content>
+            <div class="icon-box error">
+              <ion-icon name="close-circle-outline"></ion-icon>
+            </div>
+            <h2>Errore</h2>
+            <p>\{{ errorMessage }}</p>
+            <ion-button expand="block" fill="outline" (click)="goToHome()">
+              <ion-icon name="home-outline" slot="start"></ion-icon>
+              Torna alla Home
+            </ion-button>
+          </ion-card-content>
+        </ion-card>
+      </div>
+    </ion-content>
+  `,
+  styles: [`
+    .invite-container {
+      max-width: 500px;
+      margin: 48px auto;
+    }
+    .status-card {
+      text-align: center;
+    }
+    .status-card ion-card-content {
+      padding: 32px;
+    }
+    .status-card ion-spinner {
+      margin-bottom: 24px;
+      transform: scale(1.5);
+    }
+    .status-card h2 {
+      font-size: 1.5rem;
+      font-weight: 700;
+      margin-bottom: 16px;
+    }
+    .status-card p {
+      color: #666;
+      margin-bottom: 8px;
+    }
+    .role-info {
+      margin-top: 16px;
+      padding: 12px;
+      background: #f8f9fa;
+      border-radius: 8px;
+    }
+    .icon-box {
+      width: 80px;
+      height: 80px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin: 0 auto 24px;
+      font-size: 40px;
+    }
+    .icon-box.pending {
+      background: #e3f2fd;
+      color: var(--ion-color-primary);
+    }
+    .icon-box.success {
+      background: #e8f5e9;
+      color: var(--ion-color-success);
+    }
+    .icon-box.error {
+      background: #ffebee;
+      color: var(--ion-color-danger);
+    }
+    .actions {
+      margin-top: 32px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+  `],
+})
+export class AcceptInvitePage implements OnInit {
+  private route = inject(ActivatedRoute);
+  private router = inject(Router);
+  private orgService = inject(OrganizationService);
+
+  status: InviteStatus = 'loading';
+  organizationName = '';
+  roleName = '';
+  errorMessage = '';
+  isProcessing = false;
+
+  private orgId: string | null = null;
+  private inviteId: string | null = null;
+  private token: string | null = null;
+
+  constructor() {
+    addIcons({
+      checkmarkCircleOutline,
+      closeCircleOutline,
+      mailOpenOutline,
+      homeOutline,
+    });
+  }
+
+  ngOnInit(): void {
+    // Get params from URL
+    this.route.queryParams.subscribe(params => {
+      this.orgId = params['orgId'] || null;
+      this.inviteId = params['inviteId'] || null;
+      this.token = params['token'] || null;
+
+      if (!this.orgId || !this.inviteId) {
+        this.status = 'error';
+        this.errorMessage = 'Link invito non valido. Controlla di aver copiato correttamente il link.';
+        return;
+      }
+
+      this.loadInviteDetails();
+    });
+  }
+
+  private async loadInviteDetails(): Promise<void> {
+    try {
+      // Load organization details
+      const org = await firstValueFrom(this.orgService.get(this.orgId!));
+      this.organizationName = org?.name || 'Organizzazione';
+
+      // The role name could come from the invite details endpoint
+      // For now, we'll show a generic message
+      this.roleName = '';
+
+      this.status = 'pending';
+    } catch (error) {
+      this.status = 'error';
+      this.errorMessage = 'Impossibile caricare i dettagli dell\'invito. Potrebbe essere scaduto o già utilizzato.';
+    }
+  }
+
+  async acceptInvite(): Promise<void> {
+    if (!this.inviteId) return;
+
+    this.isProcessing = true;
+
+    try {
+      await firstValueFrom(this.orgService.acceptInvite(this.inviteId));
+      this.status = 'accepted';
+    } catch (error: any) {
+      this.status = 'error';
+      this.errorMessage = error.error?.message || 'Errore durante l\'accettazione dell\'invito.';
+    } finally {
+      this.isProcessing = false;
+    }
+  }
+
+  async rejectInvite(): Promise<void> {
+    if (!this.inviteId) return;
+
+    this.isProcessing = true;
+
+    try {
+      await firstValueFrom(this.orgService.rejectInvite(this.inviteId));
+      this.router.navigate(['/public/home']);
+    } catch (error) {
+      this.status = 'error';
+      this.errorMessage = 'Errore durante il rifiuto dell\'invito.';
+    } finally {
+      this.isProcessing = false;
+    }
+  }
+
+  goToHome(): void {
+    if (this.status === 'accepted') {
+      this.router.navigate(['/app/home']);
+    } else {
+      this.router.navigate(['/public/home']);
+    }
+  }
+}

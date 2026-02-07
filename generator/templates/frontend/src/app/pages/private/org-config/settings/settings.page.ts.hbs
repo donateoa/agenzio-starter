@@ -1,0 +1,290 @@
+import { Component, OnInit, inject } from '@angular/core';
+import { CommonModule } from '@angular/common';
+import { FormBuilder, FormGroup, ReactiveFormsModule, Validators } from '@angular/forms';
+import {
+  IonContent,
+  IonCard,
+  IonCardHeader,
+  IonCardTitle,
+  IonCardContent,
+  IonItem,
+  IonLabel,
+  IonInput,
+  IonButton,
+  IonIcon,
+  IonSpinner,
+  AlertController,
+  ToastController,
+} from '@ionic/angular/standalone';
+import { PrivateHeaderComponent, Organization } from '@agenzio/core-frontend';
+import { UserContextService } from '../../../../services/user-context.service';
+import { OrganizationService } from '../../../../services/api/organization.service';
+import { Router } from '@angular/router';
+import { addIcons } from 'ionicons';
+import { settingsOutline, saveOutline, trashOutline, businessOutline } from 'ionicons/icons';
+import { firstValueFrom } from 'rxjs';
+import { switchMap, filter, catchError } from 'rxjs/operators';
+import { of } from 'rxjs';
+
+@Component({
+  selector: 'app-org-settings',
+  standalone: true,
+  imports: [
+    CommonModule,
+    ReactiveFormsModule,
+    IonContent,
+    IonCard,
+    IonCardHeader,
+    IonCardTitle,
+    IonCardContent,
+    IonItem,
+    IonLabel,
+    IonInput,
+    IonButton,
+    IonIcon,
+    IonSpinner,
+    PrivateHeaderComponent,
+  ],
+  template: `
+    <agenzio-private-header
+      [brandName]="'{{displayName}}'"
+      [logoUrl]="'assets/logo.svg'"
+      [homeLink]="'/app/home'"
+      [subtitle]="'Impostazioni'"
+      [menuId]="'main-menu'"
+      [activeOrganization]="activeOrganization">
+    </agenzio-private-header>
+
+    <ion-content class="ion-padding">
+      <div class="settings-container">
+        <h1>
+          <ion-icon name="settings-outline"></ion-icon>
+          Impostazioni Progetto
+        </h1>
+        <p class="subtitle" *ngIf="activeOrganization">
+          Configura <strong>\{{ activeOrganization.name }}</strong>
+        </p>
+
+        <ion-card>
+          <ion-card-header>
+            <ion-card-title>
+              <ion-icon name="business-outline"></ion-icon>
+              Informazioni Generali
+            </ion-card-title>
+          </ion-card-header>
+          <ion-card-content>
+            <form [formGroup]="settingsForm" (ngSubmit)="save()">
+              <ion-item lines="none" class="input-item">
+                <ion-label position="stacked">Nome del Progetto</ion-label>
+                <ion-input formControlName="name" placeholder="Nome del progetto"></ion-input>
+              </ion-item>
+
+              <ion-item lines="none" class="input-item">
+                <ion-label position="stacked">Descrizione</ion-label>
+                <ion-input formControlName="description" placeholder="Descrizione opzionale"></ion-input>
+              </ion-item>
+
+              <div class="actions">
+                <ion-button type="submit" [disabled]="!settingsForm.valid || isSaving">
+                  <ng-container *ngIf="isSaving; else saveText">
+                    <ion-spinner name="crescent"></ion-spinner>
+                  </ng-container>
+                  <ng-template #saveText>
+                    <ion-icon name="save-outline" slot="start"></ion-icon>
+                    Salva
+                  </ng-template>
+                </ion-button>
+              </div>
+            </form>
+          </ion-card-content>
+        </ion-card>
+
+        <ion-card class="danger-zone" *ngIf="isOwner">
+          <ion-card-header>
+            <ion-card-title>
+              <ion-icon name="trash-outline"></ion-icon>
+              Zona Pericolosa
+            </ion-card-title>
+          </ion-card-header>
+          <ion-card-content>
+            <p class="description">
+              L'eliminazione del progetto è irreversibile. Tutti i dati, i collaboratori e le configurazioni verranno cancellati permanentemente.
+            </p>
+            <ion-button expand="block" color="danger" fill="outline" (click)="confirmDelete()">
+              <ion-icon name="trash-outline" slot="start"></ion-icon>
+              Elimina Progetto
+            </ion-button>
+          </ion-card-content>
+        </ion-card>
+      </div>
+    </ion-content>
+  `,
+  styles: [`
+    .settings-container {
+      max-width: 600px;
+      margin: 0 auto;
+    }
+    h1 {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 1.5rem;
+      margin-bottom: 8px;
+    }
+    h1 ion-icon {
+      color: var(--ion-color-primary);
+    }
+    .subtitle {
+      color: #666;
+      margin-bottom: 24px;
+    }
+    ion-card-title {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    ion-card-title ion-icon {
+      font-size: 24px;
+      color: var(--ion-color-primary);
+    }
+    .input-item {
+      --background: #f8f9fa;
+      --border-radius: 8px;
+      margin-bottom: 16px;
+    }
+    .actions {
+      display: flex;
+      justify-content: flex-end;
+      margin-top: 24px;
+    }
+    .danger-zone {
+      margin-top: 24px;
+    }
+    .danger-zone ion-card-title ion-icon {
+      color: var(--ion-color-danger);
+    }
+    .description {
+      color: #666;
+      margin-bottom: 16px;
+    }
+  `],
+})
+export class OrgSettingsPage implements OnInit {
+  private fb = inject(FormBuilder);
+  private userContext = inject(UserContextService);
+  private orgService = inject(OrganizationService);
+  private alertCtrl = inject(AlertController);
+  private toastCtrl = inject(ToastController);
+  private router = inject(Router);
+
+  settingsForm!: FormGroup;
+  activeOrganization: Organization | null = null;
+  isSaving = false;
+  isOwner = false;
+
+  constructor() {
+    addIcons({ settingsOutline, saveOutline, trashOutline, businessOutline });
+  }
+
+  ngOnInit(): void {
+    this.settingsForm = this.fb.group({
+      name: ['', Validators.required],
+      description: [''],
+    });
+
+    this.userContext.getActiveOrganizationId$().pipe(
+      filter(id => !!id),
+      switchMap(id => this.orgService.get(id!).pipe(catchError(() => of(null))))
+    ).subscribe(org => {
+      this.activeOrganization = org;
+      if (org) {
+        this.settingsForm.patchValue({
+          name: org.name,
+          description: (org as any).description || '',
+        });
+        this.isOwner = org.ownerId === this.userContext.getUserId();
+      }
+    });
+  }
+
+  async save(): Promise<void> {
+    if (!this.settingsForm.valid || !this.activeOrganization) return;
+
+    this.isSaving = true;
+    const data = this.settingsForm.value;
+
+    try {
+      await firstValueFrom(this.orgService.update(this.activeOrganization.id, data));
+      const toast = await this.toastCtrl.create({
+        message: 'Impostazioni salvate',
+        duration: 2000,
+        color: 'success',
+      });
+      await toast.present();
+    } catch (error) {
+      const toast = await this.toastCtrl.create({
+        message: 'Errore durante il salvataggio',
+        duration: 2000,
+        color: 'danger',
+      });
+      await toast.present();
+    } finally {
+      this.isSaving = false;
+    }
+  }
+
+  async confirmDelete(): Promise<void> {
+    const alert = await this.alertCtrl.create({
+      header: 'Elimina Progetto',
+      message: `Sei sicuro di voler eliminare "${this.activeOrganization?.name}"? Questa azione è irreversibile.`,
+      inputs: [
+        {
+          name: 'confirmName',
+          type: 'text',
+          placeholder: 'Scrivi il nome del progetto per confermare',
+        },
+      ],
+      buttons: [
+        { text: 'Annulla', role: 'cancel' },
+        {
+          text: 'Elimina',
+          role: 'destructive',
+          handler: (data) => {
+            if (data.confirmName === this.activeOrganization?.name) {
+              this.deleteOrganization();
+              return true;
+            } else {
+              return false;
+            }
+          },
+        },
+      ],
+    });
+    await alert.present();
+  }
+
+  private async deleteOrganization(): Promise<void> {
+    if (!this.activeOrganization) return;
+
+    try {
+      await firstValueFrom(this.orgService.delete(this.activeOrganization.id));
+      const toast = await this.toastCtrl.create({
+        message: 'Progetto eliminato',
+        duration: 2000,
+        color: 'success',
+      });
+      await toast.present();
+
+      // Clear context and redirect
+      this.userContext.setActiveOrganization(null);
+      this.router.navigate(['/app/home']);
+    } catch (error) {
+      const toast = await this.toastCtrl.create({
+        message: 'Errore durante l\'eliminazione',
+        duration: 2000,
+        color: 'danger',
+      });
+      await toast.present();
+    }
+  }
+}

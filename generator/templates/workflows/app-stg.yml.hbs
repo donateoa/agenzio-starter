@@ -1,0 +1,51 @@
+name: Deploy {{displayName}} (Staging)
+
+on:
+  push:
+    branches:
+      - develop
+    paths:
+      - 'frontend/**'
+      - 'functions/**'
+      - '.github/workflows/{{appName}}-stg.yml'
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 'Authenticate to Google Cloud'
+        uses: 'google-github-actions/auth@v2'
+        with:
+          workload_identity_provider: 'projects/$\{{ secrets.GCP_PROJECT_NUMBER_STG }}/locations/global/workloadIdentityPools/github-pool/providers/github-provider'
+          service_account: 'github-actions-deployer@{{stagingProjectId}}.iam.gserviceaccount.com'
+
+      - name: 'Set up Node.js'
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: |
+            frontend/package-lock.json
+            functions/package-lock.json
+
+      - name: 'Install Frontend Dependencies'
+        run: |
+          cd frontend
+          npm ci
+
+      - name: 'Build Frontend'
+        run: |
+          cd frontend
+          npm run build
+
+      - name: 'Install Firebase CLI'
+        run: npm install -g firebase-tools
+
+      - name: 'Deploy to Firebase Hosting'
+        run: firebase deploy --only hosting --project {{stagingProjectId}}

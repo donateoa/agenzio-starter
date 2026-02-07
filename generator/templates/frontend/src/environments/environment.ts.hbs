@@ -1,0 +1,16 @@
+export const environment = {
+production: false,
+useEmulators: true,
+version: '0.0.1',
+apiUrl: 'http://localhost:3000/api',
+docsUrl: 'https://docs.{{appName}}.{{domain}}',
+firebase: {
+projectId: '{{stagingProjectId}}',
+appId: 'YOUR_APP_ID', // TODO: Update after terraform apply
+storageBucket: '{{stagingProjectId}}.appspot.com',
+apiKey: 'YOUR_API_KEY', // TODO: Update after terraform apply
+authDomain: '{{stagingProjectId}}.firebaseapp.com',
+messagingSenderId: 'YOUR_SENDER_ID' // TODO: Update after terraform apply
+}
+};
+// emulatore: http://localhost:5001/{{stagingProjectId}}/europe-west1/api

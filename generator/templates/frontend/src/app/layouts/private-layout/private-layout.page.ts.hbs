@@ -1,0 +1,225 @@
+import { Component, OnInit, inject } from '@angular/core';
+import { CommonModule } from '@angular/common';
+import { Router } from '@angular/router';
+import { IonRouterOutlet, ModalController, IonSpinner } from '@ionic/angular/standalone';
+import { Auth, signOut } from '@angular/fire/auth';
+import {
+PrivateSidemenuComponent,
+SidemenuSection,
+SidemenuItem,
+SidemenuFooterLink,
+OrganizationSwitcherComponent,
+OrganizationItem,
+OrganizationCreateComponent,
+Organization,
+} from '@agenzio/core-frontend';
+import { UserContextService } from '../../services/user-context.service';
+import { OrganizationService } from '../../services/api/organization.service';
+import { switchMap, catchError, filter } from 'rxjs/operators';
+import { of, forkJoin, Observable } from 'rxjs';
+import { environment } from '../../../environments/environment';
+
+@Component({
+selector: 'app-private-layout',
+standalone: true,
+imports: [
+CommonModule,
+IonRouterOutlet,
+PrivateSidemenuComponent,
+IonSpinner,
+],
+template: `
+<ng-container *ngIf="isReady$ | async; else loading">
+  <agenzio-private-sidemenu [brandName]="'{{displayName}}'" [logoUrl]="'assets/logo.svg'" [homeLink]="'/public/home'"
+    [subtitle]="'PROFESSIONALE'" [highlightSubtitle]="true" [menuId]="'main-menu'" [splitPaneWhen]="'never'"
+    [sections]="menuSections" [activeOrganization]="activeOrganization" [organizationSectionLabel]="'STUDIO ATTIVO'"
+    [organizationConfigLabel]="'CONFIGURAZIONE'" [organizationMenuItems]="orgMenuItems" [footerLinks]="footerLinks"
+    (logout)="onLogout()" (organizationClick)="openOrganizationSwitcher()">
+    <ion-router-outlet></ion-router-outlet>
+  </agenzio-private-sidemenu>
+</ng-container>
+
+<ng-template #loading>
+  <div class="loading-gate">
+    <div class="loader-content">
+      <img src="assets/logo.svg" alt="{{displayName}} Logo" class="loader-logo" />
+      <ion-spinner name="crescent" color="primary"></ion-spinner>
+      <div class="loader-message">Inizializzazione in corso...</div>
+    </div>
+  </div>
+</ng-template>
+`,
+styles: [`
+.loading-gate {
+display: flex;
+flex-direction: column;
+align-items: center;
+justify-content: center;
+height: 100vh;
+width: 100vw;
+background: var(--ion-background-color, #ffffff);
+}
+.loader-content {
+display: flex;
+flex-direction: column;
+align-items: center;
+gap: 1.5rem;
+}
+.loader-logo {
+width: 80px;
+height: 80px;
+margin-bottom: 0.5rem;
+animation: pulse 2s infinite ease-in-out;
+}
+.loader-message {
+color: var(--ion-color-step-600, #666);
+font-size: 0.9rem;
+font-weight: 500;
+}
+@keyframes pulse {
+0% { transform: scale(1); opacity: 1; }
+50% { transform: scale(1.05); opacity: 0.8; }
+100% { transform: scale(1); opacity: 1; }
+}
+`]
+})
+export class PrivateLayoutPage implements OnInit {
+private auth = inject(Auth);
+private router = inject(Router);
+private modalCtrl = inject(ModalController);
+private userContextService = inject(UserContextService);
+private orgService = inject(OrganizationService);
+
+activeOrganization: Organization | null = null;
+isReady$ = this.userContextService.isReady$;
+private isOrgModalOpen = false;
+
+menuSections: SidemenuSection[] = [
+{
+items: [
+{ label: 'Home', icon: 'grid-outline', routerLink: '/app/home' },
+],
+},
+{
+label: 'AREA PERSONALE',
+items: [
+{ label: 'Mio Profilo', icon: 'person-outline', routerLink: '/app/profile' },
+{ label: 'Privacy e Consensi', icon: 'shield-checkmark-outline', routerLink: '/app/privacy' },
+],
+},
+];
+
+orgMenuItems: SidemenuItem[] = [
+{ label: 'Collaboratori', icon: 'people-outline', routerLink: '/app/org-config/team' },
+{{#if includeStripe}}
+{ label: 'Abbonamento', icon: 'card-outline', routerLink: '/app/org-config/subscription' },
+{ label: 'Pagamenti e Entrate', icon: 'wallet-outline', routerLink: '/app/org-config/payments' },
+{{/if}}
+{ label: 'Impostazioni Progetto', icon: 'settings-outline', routerLink: '/app/org-config/settings' },
+];
+
+footerLinks: SidemenuFooterLink[] = [
+{ label: 'Help Center', href: environment.docsUrl, target: '_blank' },
+{ label: 'Termini', href: environment.docsUrl + '/legale/termini-condizioni.html', target: '_blank' },
+{ label: 'Privacy', routerLink: '/public/privacy' },
+{ label: 'Cookie', routerLink: '/public/privacy' },
+];
+
+ngOnInit(): void {
+// Load active organization data reactively
+this.userContextService.activeOrganization$.subscribe(org => {
+this.activeOrganization = org;
+
+// If ready but no org, and not already showing modal, open switcher
+this.isReady$.pipe(filter(ready => ready)).subscribe(() => {
+if (!this.activeOrganization && !this.isOrgModalOpen) {
+this.openOrganizationSwitcher(true);
+}
+});
+});
+}
+
+async onLogout(): Promise<void> {
+  this.userContextService.clear();
+  await signOut(this.auth);
+  this.router.navigate(['/login']);
+  }
+
+  async openOrganizationSwitcher(forceSelection = false): Promise<void> {
+    if (this.isOrgModalOpen) return;
+    this.isOrgModalOpen = true;
+
+    // Load organizations
+    const roles = await this.userContextService.getPractitionerRoles();
+    const orgIds = [...new Set(roles.map(r => r.organizationId).filter(Boolean))];
+
+    let organizations: OrganizationItem[] = [];
+    if (orgIds.length > 0) {
+    const orgs = await Promise.all(
+    orgIds.map(id => this.orgService.get(id).toPromise().catch(() => null))
+    );
+    organizations = orgs
+    .filter((org): org is Organization => org !== null)
+    .map(org => {
+    const role = roles.find(r => r.organizationId === org.id);
+    return {
+    organization: org,
+    status: (role as any)?.status || 'ACCEPTED',
+    roleId: (role as any)?.id,
+    };
+    });
+    }
+
+    const modal = await this.modalCtrl.create({
+    component: OrganizationSwitcherComponent,
+    componentProps: {
+    organizations,
+    activeOrganizationId: this.activeOrganization?.id,
+    isLoading: false,
+    },
+    backdropDismiss: !forceSelection,
+    cssClass: 'org-switcher-modal',
+    });
+
+    await modal.present();
+
+    const { data, role } = await modal.onDidDismiss();
+    this.isOrgModalOpen = false;
+
+    if (role === 'select' && data) {
+    const item = data as OrganizationItem;
+    if (item.status === 'PENDING') {
+    this.router.navigate(['/invites/accept'], {
+    queryParams: { orgId: item.organization.id, token: item.roleId }
+    });
+    } else {
+    this.userContextService.setActiveOrganization(item.organization.id);
+    }
+    } else if (role === 'create') {
+    await this.openCreateOrganization();
+    } else if (role === 'logout') {
+    await this.onLogout();
+    }
+    }
+
+    async openCreateOrganization(): Promise<void> {
+      const modal = await this.modalCtrl.create({
+      component: OrganizationCreateComponent,
+      cssClass: 'org-create-modal',
+      });
+
+      await modal.present();
+
+      const { data, role } = await modal.onDidDismiss();
+      if (role === 'confirm' && data) {
+      // Create the organization
+      this.orgService.create({ name: data.name }).subscribe({
+      next: (org) => {
+      this.userContextService.setActiveOrganization(org.id);
+      this.userContextService.refreshRoles();
+      },
+      error: (err) => console.error('Failed to create organization', err),
+      });
+      }
+      }
+      }

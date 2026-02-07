@@ -1,0 +1,84 @@
+# Dependencies
+node_modules/
+
+# Build outputs
+dist/
+www/
+lib/
+.angular/
+
+# Environment and secrets - CRITICAL
+.env
+.env.local
+.env.*.local
+.env.staging
+.env.production
+.secret.local
+
+# Firebase
+.firebase/
+*-debug.log
+firebase-debug.log
+firestore-debug.log
+ui-debug.log
+
+# Firebase credentials - NEVER COMMIT
+**/google-services.json
+**/GoogleService-Info.plist
+firebase-adminsdk*.json
+*service-account*.json
+*-firebase-adminsdk-*.json
+
+# Terraform - NEVER COMMIT STATE
+**/.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+crash.log
+crash.*.log
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+.terraform.lock.hcl
+
+# IDE and editors
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+
+# Test coverage
+coverage/
+.nyc_output/
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+*.temp
+
+# OS files
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Stripe/Payment keys (backup prevention)
+*.key
+*.pem
+*.p12
+
+# Backup files
+*.bak
+*.backup
+*~

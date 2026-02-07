@@ -1,0 +1,148 @@
+import { Component, inject } from '@angular/core';
+import { CommonModule } from '@angular/common';
+import { RouterLink } from '@angular/router';
+import {
+  IonContent,
+  IonCard,
+  IonCardContent,
+  IonIcon,
+} from '@ionic/angular/standalone';
+import { PrivateHeaderComponent, Organization } from '@agenzio/core-frontend';
+import { UserContextService } from '../../../services/user-context.service';
+import { OrganizationService } from '../../../services/api/organization.service';
+import { switchMap, catchError, filter } from 'rxjs/operators';
+import { of } from 'rxjs';
+import { addIcons } from 'ionicons';
+import { peopleOutline, settingsOutline, cardOutline, walletOutline } from 'ionicons/icons';
+
+@Component({
+  selector: 'app-private-home',
+  standalone: true,
+  imports: [
+    CommonModule,
+    RouterLink,
+    IonContent,
+    IonCard,
+    IonCardContent,
+    IonIcon,
+    PrivateHeaderComponent,
+  ],
+  template: `
+    <agenzio-private-header
+      [brandName]="'{{displayName}}'"
+      [logoUrl]="'assets/logo.svg'"
+      [homeLink]="'/app/home'"
+      [subtitle]="'Dashboard'"
+      [menuId]="'main-menu'"
+      [activeOrganization]="activeOrganization">
+    </agenzio-private-header>
+
+    <ion-content class="ion-padding">
+      <div class="dashboard-container">
+        <h1>Benvenuto!</h1>
+        <p class="subtitle" *ngIf="activeOrganization">
+          Stai gestendo: <strong>\{{ activeOrganization.name }}</strong>
+        </p>
+
+        <div class="quick-actions">
+          <h2>Azioni Rapide</h2>
+          <div class="actions-grid">
+            <ion-card routerLink="/app/org-config/team" button>
+              <ion-card-content>
+                <ion-icon name="people-outline"></ion-icon>
+                <span>Collaboratori</span>
+              </ion-card-content>
+            </ion-card>
+
+            <ion-card routerLink="/app/org-config/settings" button>
+              <ion-card-content>
+                <ion-icon name="settings-outline"></ion-icon>
+                <span>Impostazioni</span>
+              </ion-card-content>
+            </ion-card>
+
+{{#if includeStripe}}
+            <ion-card routerLink="/app/org-config/subscription" button>
+              <ion-card-content>
+                <ion-icon name="card-outline"></ion-icon>
+                <span>Abbonamento</span>
+              </ion-card-content>
+            </ion-card>
+
+            <ion-card routerLink="/app/org-config/payments" button>
+              <ion-card-content>
+                <ion-icon name="wallet-outline"></ion-icon>
+                <span>Pagamenti</span>
+              </ion-card-content>
+            </ion-card>
+{{/if}}
+          </div>
+        </div>
+      </div>
+    </ion-content>
+  `,
+  styles: [`
+    .dashboard-container {
+      max-width: 1200px;
+      margin: 0 auto;
+    }
+    h1 {
+      font-size: 2rem;
+      margin-bottom: 8px;
+    }
+    .subtitle {
+      color: #666;
+      margin-bottom: 32px;
+    }
+    h2 {
+      font-size: 1.25rem;
+      margin-bottom: 16px;
+    }
+    .actions-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+      gap: 16px;
+    }
+    ion-card {
+      margin: 0;
+      cursor: pointer;
+      transition: transform 0.2s, box-shadow 0.2s;
+    }
+    ion-card:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    }
+    ion-card-content {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 12px;
+      padding: 24px 16px;
+    }
+    ion-icon {
+      font-size: 32px;
+      color: var(--ion-color-primary);
+    }
+    span {
+      font-weight: 500;
+      text-align: center;
+    }
+  `],
+})
+export class PrivateHomePage {
+  private userContextService = inject(UserContextService);
+  private orgService = inject(OrganizationService);
+
+  activeOrganization: Organization | null = null;
+
+  constructor() {
+    addIcons({ peopleOutline, settingsOutline, cardOutline, walletOutline });
+
+    this.userContextService.getActiveOrganizationId$().pipe(
+      filter(id => !!id),
+      switchMap(id => this.orgService.get(id!).pipe(catchError(() => of(null))))
+    ).subscribe(org => {
+      this.activeOrganization = org;
+    });
+  }
+}

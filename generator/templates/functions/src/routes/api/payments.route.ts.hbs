@@ -1,0 +1,511 @@
+{{#if includeStripe}}
+import { Router, Response, NextFunction } from 'express';
+import * as admin from 'firebase-admin';
+import Stripe from 'stripe';
+import {
+  stripeSecretKey,
+  stripeWebhookSecret,
+  frontendUrlSecret,
+{{#if includeFIC}}
+  ficClientId,
+  ficClientSecret,
+{{/if}}
+} from '../../config';
+
+const router = Router();
+const db = admin.firestore();
+
+// Simple auth middleware
+const checkAuth = async (req: any, res: Response, next: NextFunction) => {
+  try {
+    const authHeader = req.headers.authorization;
+    if (!authHeader?.startsWith('Bearer ')) {
+      return res.status(401).json({ error: 'No token provided' });
+    }
+
+    const token = authHeader.split('Bearer ')[1];
+    const decodedToken = await admin.auth().verifyIdToken(token);
+    req.user = decodedToken;
+    next();
+  } catch (error) {
+    console.error('Auth error:', error);
+    return res.status(401).json({ error: 'Invalid token' });
+  }
+};
+
+// Helper to get user's roles
+async function getRolesByUserId(uid: string): Promise<any[]> {
+  const rolesSnap = await db.collection('practitionerRoles')
+    .where('practitionerId', '==', uid)
+    .get();
+  return rolesSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+}
+
+// Initialize Stripe lazily
+const getStripe = () => {
+  const key = stripeSecretKey.value();
+  if (!key) throw new Error('Stripe secret key not configured');
+  return new Stripe(key, { apiVersion: '2024-06-20' });
+};
+
+// --- SUBSCRIPTION ENDPOINTS ---
+
+// GET /subscription/status - Get subscription status
+router.get('/subscription/status', checkAuth, (async (req: any, res: Response) => {
+  try {
+    const uid = req.user.uid;
+
+    const roles = await getRolesByUserId(uid);
+    const ownerRole = roles.find((r: any) => r.roleCode === 'OWNER');
+    if (!ownerRole) {
+      return res.json({ status: 'none' });
+    }
+
+    const orgDoc = await db.collection('organizations').doc(ownerRole.organizationId).get();
+    const subscription = orgDoc.data()?.subscription;
+
+    if (!subscription) {
+      return res.json({ status: 'none' });
+    }
+
+    return res.json({
+      status: subscription.status || 'none',
+      planName: subscription.planName || 'Basic Plan',
+      currentPeriodEnd: subscription.currentPeriodEnd,
+      cancelAtPeriodEnd: subscription.cancelAtPeriodEnd || false
+    });
+  } catch (error: any) {
+    console.error('Get Subscription Status Error:', error);
+    return res.status(500).json({ error: 'Failed to get subscription status' });
+  }
+}) as any);
+
+// POST /subscription/checkout - Create checkout session
+router.post('/subscription/checkout', checkAuth, (async (req: any, res: Response) => {
+  try {
+    const uid = req.user.uid;
+    const stripe = getStripe();
+    const frontendUrl = frontendUrlSecret.value() || 'https://{{appName}}.web.app';
+
+    const roles = await getRolesByUserId(uid);
+    const ownerRole = roles.find((r: any) => r.roleCode === 'OWNER');
+    if (!ownerRole) {
+      return res.status(400).json({ error: 'You must be an organization owner to subscribe' });
+    }
+
+    const orgId = ownerRole.organizationId;
+    const orgDoc = await db.collection('organizations').doc(orgId).get();
+    const orgData = orgDoc.data();
+
+    // Get or create Stripe customer
+    let customerId = orgData?.stripeCustomerId;
+    if (!customerId) {
+      const customer = await stripe.customers.create({
+        email: req.user.email,
+        metadata: { orgId, userId: uid }
+      });
+      customerId = customer.id;
+      await db.collection('organizations').doc(orgId).update({ stripeCustomerId: customerId });
+    }
+
+    // Create checkout session
+    const session = await stripe.checkout.sessions.create({
+      customer: customerId,
+      mode: 'subscription',
+      payment_method_types: ['card'],
+      line_items: [
+        {
+          price: process.env.STRIPE_PRICE_ID || 'price_xxx', // Configure your price ID
+          quantity: 1
+        }
+      ],
+      success_url: `${frontendUrl}/app/org-config/subscription?success=true`,
+      cancel_url: `${frontendUrl}/app/org-config/subscription?canceled=true`,
+      metadata: { orgId }
+    });
+
+    return res.json({ url: session.url });
+  } catch (error: any) {
+    console.error('Create Checkout Error:', error);
+    return res.status(500).json({ error: 'Failed to create checkout session' });
+  }
+}) as any);
+
+// POST /portal - Create customer portal session
+router.post('/portal', checkAuth, (async (req: any, res: Response) => {
+  try {
+    const uid = req.user.uid;
+    const stripe = getStripe();
+    const frontendUrl = frontendUrlSecret.value() || 'https://{{appName}}.web.app';
+
+    const roles = await getRolesByUserId(uid);
+    const ownerRole = roles.find((r: any) => r.roleCode === 'OWNER');
+    if (!ownerRole) {
+      return res.status(400).json({ error: 'You must be an organization owner' });
+    }
+
+    const orgDoc = await db.collection('organizations').doc(ownerRole.organizationId).get();
+    const customerId = orgDoc.data()?.stripeCustomerId;
+
+    if (!customerId) {
+      return res.status(400).json({ error: 'No subscription found' });
+    }
+
+    const session = await stripe.billingPortal.sessions.create({
+      customer: customerId,
+      return_url: `${frontendUrl}/app/org-config/subscription`
+    });
+
+    return res.json({ url: session.url });
+  } catch (error: any) {
+    console.error('Create Portal Error:', error);
+    return res.status(500).json({ error: 'Failed to create portal session' });
+  }
+}) as any);
+
+// POST /subscription/sync - Sync subscription status
+router.post('/subscription/sync', checkAuth, (async (req: any, res: Response) => {
+  try {
+    const uid = req.user.uid;
+    const stripe = getStripe();
+
+    const roles = await getRolesByUserId(uid);
+    const ownerRole = roles.find((r: any) => r.roleCode === 'OWNER');
+    if (!ownerRole) {
+      return res.status(400).json({ error: 'You must be an organization owner' });
+    }
+
+    const orgRef = db.collection('organizations').doc(ownerRole.organizationId);
+    const orgDoc = await orgRef.get();
+    const customerId = orgDoc.data()?.stripeCustomerId;
+
+    if (!customerId) {
+      return res.json({ status: 'none' });
+    }
+
+    const subscriptions = await stripe.subscriptions.list({
+      customer: customerId,
+      status: 'all',
+      limit: 1
+    });
+
+    if (subscriptions.data.length === 0) {
+      await orgRef.update({ 'subscription.status': 'none' });
+      return res.json({ status: 'none' });
+    }
+
+    const sub = subscriptions.data[0];
+    await orgRef.update({
+      'subscription.status': sub.status,
+      'subscription.currentPeriodEnd': new Date(sub.current_period_end * 1000).toISOString(),
+      'subscription.cancelAtPeriodEnd': sub.cancel_at_period_end
+    });
+
+    return res.json({ status: sub.status });
+  } catch (error: any) {
+    console.error('Sync Subscription Error:', error);
+    return res.status(500).json({ error: 'Failed to sync subscription' });
+  }
+}) as any);
+
+// GET /invoices - Get invoice history
+router.get('/invoices', checkAuth, (async (req: any, res: Response) => {
+  try {
+    const uid = req.user.uid;
+    const stripe = getStripe();
+
+    const roles = await getRolesByUserId(uid);
+    const ownerRole = roles.find((r: any) => r.roleCode === 'OWNER');
+    if (!ownerRole) {
+      return res.json([]);
+    }
+
+    const orgDoc = await db.collection('organizations').doc(ownerRole.organizationId).get();
+    const customerId = orgDoc.data()?.stripeCustomerId;
+
+    if (!customerId) {
+      return res.json([]);
+    }
+
+    const invoices = await stripe.invoices.list({
+      customer: customerId,
+      limit: 20
+    });
+
+    return res.json(invoices.data.map(inv => ({
+      id: inv.id,
+      date: new Date(inv.created * 1000),
+      amount: (inv.amount_paid || 0) / 100,
+      status: inv.status,
+      pdfUrl: inv.invoice_pdf
+    })));
+  } catch (error: any) {
+    console.error('Get Invoices Error:', error);
+    return res.status(500).json({ error: 'Failed to get invoices' });
+  }
+}) as any);
+
+// --- STRIPE CONNECT ENDPOINTS ---
+
+// GET /connect/status - Get Connect account status
+router.get('/connect/status', checkAuth, (async (req: any, res: Response) => {
+  try {
+    const uid = req.user.uid;
+    const stripe = getStripe();
+
+    const roles = await getRolesByUserId(uid);
+    const ownerRole = roles.find((r: any) => r.roleCode === 'OWNER');
+    if (!ownerRole) {
+      return res.json({ connected: false });
+    }
+
+    const orgDoc = await db.collection('organizations').doc(ownerRole.organizationId).get();
+    const connectAccountId = orgDoc.data()?.stripeConnectAccountId;
+
+    if (!connectAccountId) {
+      return res.json({ connected: false });
+    }
+
+    const account = await stripe.accounts.retrieve(connectAccountId);
+    return res.json({
+      connected: true,
+      accountId: account.id,
+      chargesEnabled: account.charges_enabled,
+      payoutsEnabled: account.payouts_enabled
+    });
+  } catch (error: any) {
+    console.error('Get Connect Status Error:', error);
+    return res.json({ connected: false });
+  }
+}) as any);
+
+// POST /connect/onboard - Start Connect onboarding
+router.post('/connect/onboard', checkAuth, (async (req: any, res: Response) => {
+  try {
+    const uid = req.user.uid;
+    const stripe = getStripe();
+    const frontendUrl = frontendUrlSecret.value() || 'https://{{appName}}.web.app';
+
+    const roles = await getRolesByUserId(uid);
+    const ownerRole = roles.find((r: any) => r.roleCode === 'OWNER');
+    if (!ownerRole) {
+      return res.status(400).json({ error: 'You must be an organization owner' });
+    }
+
+    const orgId = ownerRole.organizationId;
+    const orgRef = db.collection('organizations').doc(orgId);
+    const orgDoc = await orgRef.get();
+    let connectAccountId = orgDoc.data()?.stripeConnectAccountId;
+
+    // Create Connect account if doesn't exist
+    if (!connectAccountId) {
+      const account = await stripe.accounts.create({
+        type: 'express',
+        email: req.user.email,
+        metadata: { orgId }
+      });
+      connectAccountId = account.id;
+      await orgRef.update({ stripeConnectAccountId: connectAccountId });
+    }
+
+    // Create onboarding link
+    const accountLink = await stripe.accountLinks.create({
+      account: connectAccountId,
+      refresh_url: `${frontendUrl}/app/org-config/payments?refresh=true`,
+      return_url: `${frontendUrl}/app/org-config/payments?success=true`,
+      type: 'account_onboarding'
+    });
+
+    return res.json({ url: accountLink.url });
+  } catch (error: any) {
+    console.error('Create Connect Onboarding Error:', error);
+    return res.status(500).json({ error: 'Failed to create onboarding link' });
+  }
+}) as any);
+
+// GET /connect/dashboard - Get Connect dashboard link
+router.get('/connect/dashboard', checkAuth, (async (req: any, res: Response) => {
+  try {
+    const uid = req.user.uid;
+    const stripe = getStripe();
+
+    const roles = await getRolesByUserId(uid);
+    const ownerRole = roles.find((r: any) => r.roleCode === 'OWNER');
+    if (!ownerRole) {
+      return res.status(400).json({ error: 'You must be an organization owner' });
+    }
+
+    const orgDoc = await db.collection('organizations').doc(ownerRole.organizationId).get();
+    const connectAccountId = orgDoc.data()?.stripeConnectAccountId;
+
+    if (!connectAccountId) {
+      return res.status(400).json({ error: 'No Connect account found' });
+    }
+
+    const loginLink = await stripe.accounts.createLoginLink(connectAccountId);
+    return res.json({ url: loginLink.url });
+  } catch (error: any) {
+    console.error('Get Connect Dashboard Error:', error);
+    return res.status(500).json({ error: 'Failed to get dashboard link' });
+  }
+}) as any);
+
+// GET /transactions - Get transaction history
+router.get('/transactions', checkAuth, (async (req: any, res: Response) => {
+  try {
+    const uid = req.user.uid;
+    const stripe = getStripe();
+
+    const roles = await getRolesByUserId(uid);
+    const ownerRole = roles.find((r: any) => r.roleCode === 'OWNER');
+    if (!ownerRole) {
+      return res.json([]);
+    }
+
+    const orgDoc = await db.collection('organizations').doc(ownerRole.organizationId).get();
+    const connectAccountId = orgDoc.data()?.stripeConnectAccountId;
+
+    if (!connectAccountId) {
+      return res.json([]);
+    }
+
+    const balanceTransactions = await stripe.balanceTransactions.list(
+      { limit: 50 },
+      { stripeAccount: connectAccountId }
+    );
+
+    return res.json(balanceTransactions.data.map(tx => ({
+      id: tx.id,
+      date: new Date(tx.created * 1000),
+      description: tx.description || tx.type,
+      amount: tx.amount / 100,
+      type: tx.amount >= 0 ? 'income' : 'expense',
+      status: tx.status
+    })));
+  } catch (error: any) {
+    console.error('Get Transactions Error:', error);
+    return res.json([]);
+  }
+}) as any);
+
+// GET /transactions/export - Export transactions as CSV
+router.get('/transactions/export', checkAuth, (async (req: any, res: Response) => {
+  try {
+    const uid = req.user.uid;
+    const stripe = getStripe();
+
+    const roles = await getRolesByUserId(uid);
+    const ownerRole = roles.find((r: any) => r.roleCode === 'OWNER');
+    if (!ownerRole) {
+      return res.status(400).json({ error: 'No transactions to export' });
+    }
+
+    const orgDoc = await db.collection('organizations').doc(ownerRole.organizationId).get();
+    const connectAccountId = orgDoc.data()?.stripeConnectAccountId;
+
+    if (!connectAccountId) {
+      return res.status(400).json({ error: 'No Connect account found' });
+    }
+
+    const balanceTransactions = await stripe.balanceTransactions.list(
+      { limit: 100 },
+      { stripeAccount: connectAccountId }
+    );
+
+    // Generate CSV
+    const headers = 'ID,Date,Description,Amount,Type,Status\n';
+    const rows = balanceTransactions.data.map(tx => {
+      const date = new Date(tx.created * 1000).toISOString().split('T')[0];
+      const amount = (tx.amount / 100).toFixed(2);
+      const type = tx.amount >= 0 ? 'Income' : 'Expense';
+      return `${tx.id},${date},"${tx.description || tx.type}",${amount},${type},${tx.status}`;
+    }).join('\n');
+
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', 'attachment; filename=transactions.csv');
+    return res.send(headers + rows);
+  } catch (error: any) {
+    console.error('Export Transactions Error:', error);
+    return res.status(500).json({ error: 'Failed to export transactions' });
+  }
+}) as any);
+
+{{#if includeFIC}}
+// --- FATTURE IN CLOUD ENDPOINTS ---
+
+// GET /fic/status - Get FIC connection status
+router.get('/fic/status', checkAuth, (async (req: any, res: Response) => {
+  try {
+    const uid = req.user.uid;
+
+    const roles = await getRolesByUserId(uid);
+    const ownerRole = roles.find((r: any) => r.roleCode === 'OWNER');
+    if (!ownerRole) {
+      return res.json({ connected: false });
+    }
+
+    const orgDoc = await db.collection('organizations').doc(ownerRole.organizationId).get();
+    const ficData = orgDoc.data()?.ficIntegration;
+
+    if (!ficData?.accessToken) {
+      return res.json({ connected: false });
+    }
+
+    return res.json({
+      connected: true,
+      companyName: ficData.companyName || 'Company'
+    });
+  } catch (error: any) {
+    console.error('Get FIC Status Error:', error);
+    return res.json({ connected: false });
+  }
+}) as any);
+
+// GET /fic/auth - Get FIC OAuth URL
+router.get('/fic/auth', checkAuth, (async (req: any, res: Response) => {
+  try {
+    const clientId = ficClientId.value();
+    const frontendUrl = frontendUrlSecret.value() || 'https://{{appName}}.web.app';
+    const redirectUri = `${frontendUrl}/api/payments/fic/callback`;
+
+    const authUrl = `https://api-v2.fattureincloud.it/oauth/authorize?` +
+      `response_type=code&client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}` +
+      `&scope=entity.suppliers:r entity.clients:a entity.other_data:r products:a issued_documents:a received_documents:r taxes:r settings:r`;
+
+    return res.json({ url: authUrl });
+  } catch (error: any) {
+    console.error('Get FIC Auth URL Error:', error);
+    return res.status(500).json({ error: 'Failed to get auth URL' });
+  }
+}) as any);
+
+// POST /fic/disconnect - Disconnect FIC
+router.post('/fic/disconnect', checkAuth, (async (req: any, res: Response) => {
+  try {
+    const uid = req.user.uid;
+
+    const roles = await getRolesByUserId(uid);
+    const ownerRole = roles.find((r: any) => r.roleCode === 'OWNER');
+    if (!ownerRole) {
+      return res.status(400).json({ error: 'You must be an organization owner' });
+    }
+
+    await db.collection('organizations').doc(ownerRole.organizationId).update({
+      ficIntegration: admin.firestore.FieldValue.delete()
+    });
+
+    return res.json({ success: true });
+  } catch (error: any) {
+    console.error('Disconnect FIC Error:', error);
+    return res.status(500).json({ error: 'Failed to disconnect FIC' });
+  }
+}) as any);
+{{/if}}
+
+export default router;
+{{else}}
+// Stripe not included
+import { Router } from 'express';
+const router = Router();
+export default router;
+{{/if}}

@@ -1,0 +1,353 @@
+import { Component, OnInit, inject } from '@angular/core';
+import { CommonModule } from '@angular/common';
+import {
+  IonContent,
+  IonCard,
+  IonCardContent,
+  IonList,
+  IonItem,
+  IonLabel,
+  IonAvatar,
+  IonBadge,
+  IonButton,
+  IonIcon,
+  IonSpinner,
+  IonRefresher,
+  IonRefresherContent,
+  ModalController,
+  AlertController,
+  ToastController,
+} from '@ionic/angular/standalone';
+import {
+  PrivateHeaderComponent,
+  InviteCollaboratorComponent,
+  Organization,
+  OrganizationRole,
+  PractitionerRole,
+  getRoleLabel,
+  canManageTeam,
+} from '@agenzio/core-frontend';
+import { UserContextService } from '../../../../services/user-context.service';
+import { OrganizationService } from '../../../../services/api/organization.service';
+import { addIcons } from 'ionicons';
+import {
+  peopleOutline,
+  personAddOutline,
+  trashOutline,
+  mailOutline,
+  checkmarkCircleOutline,
+  timeOutline,
+} from 'ionicons/icons';
+import { firstValueFrom } from 'rxjs';
+import { switchMap, filter, catchError } from 'rxjs/operators';
+import { of } from 'rxjs';
+
+@Component({
+  selector: 'app-team',
+  standalone: true,
+  imports: [
+    CommonModule,
+    IonContent,
+    IonCard,
+    IonCardContent,
+    IonList,
+    IonItem,
+    IonLabel,
+    IonAvatar,
+    IonBadge,
+    IonButton,
+    IonIcon,
+    IonSpinner,
+    IonRefresher,
+    IonRefresherContent,
+    PrivateHeaderComponent,
+  ],
+  template: `
+    <agenzio-private-header
+      [brandName]="'{{displayName}}'"
+      [logoUrl]="'assets/logo.svg'"
+      [homeLink]="'/app/home'"
+      [subtitle]="'Collaboratori'"
+      [menuId]="'main-menu'"
+      [activeOrganization]="activeOrganization">
+    </agenzio-private-header>
+
+    <ion-content class="ion-padding">
+      <ion-refresher slot="fixed" (ionRefresh)="loadData($event)">
+        <ion-refresher-content></ion-refresher-content>
+      </ion-refresher>
+
+      <div class="team-container">
+        <div class="header-row">
+          <h1>
+            <ion-icon name="people-outline"></ion-icon>
+            Team
+          </h1>
+          <ion-button *ngIf="canManage" (click)="openInviteModal()">
+            <ion-icon name="person-add-outline" slot="start"></ion-icon>
+            Invita
+          </ion-button>
+        </div>
+
+        <p class="subtitle" *ngIf="activeOrganization">
+          Gestisci i collaboratori di <strong>\{{ activeOrganization.name }}</strong>
+        </p>
+
+        <div *ngIf="isLoading" class="loading-container">
+          <ion-spinner name="crescent"></ion-spinner>
+        </div>
+
+        <ion-card *ngIf="!isLoading">
+          <ion-card-content>
+            <ion-list lines="none">
+              <ion-item *ngFor="let member of members" class="member-item">
+                <ion-avatar slot="start">
+                  <div class="avatar-placeholder">
+                    \{{ getInitials(member) }}
+                  </div>
+                </ion-avatar>
+                <ion-label>
+                  <h2>\{{ member.displayName || member.email }}</h2>
+                  <p>\{{ member.email }}</p>
+                </ion-label>
+                <ion-badge [color]="getStatusColor(member.status)" slot="end" class="status-badge">
+                  <ion-icon [name]="getStatusIcon(member.status)"></ion-icon>
+                  \{{ getRoleLabel(member.roleCode) }}
+                </ion-badge>
+                <ion-button
+                  *ngIf="canManage && member.roleCode !== 'OWNER'"
+                  fill="clear"
+                  color="danger"
+                  slot="end"
+                  (click)="confirmRemove(member)">
+                  <ion-icon name="trash-outline" slot="icon-only"></ion-icon>
+                </ion-button>
+              </ion-item>
+
+              <ion-item *ngIf="members.length === 0">
+                <ion-label class="ion-text-center">
+                  <p>Nessun collaboratore. Invita qualcuno!</p>
+                </ion-label>
+              </ion-item>
+            </ion-list>
+          </ion-card-content>
+        </ion-card>
+      </div>
+    </ion-content>
+  `,
+  styles: [`
+    .team-container {
+      max-width: 800px;
+      margin: 0 auto;
+    }
+    .header-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 8px;
+    }
+    h1 {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 1.5rem;
+      margin: 0;
+    }
+    h1 ion-icon {
+      color: var(--ion-color-primary);
+    }
+    .subtitle {
+      color: #666;
+      margin-bottom: 24px;
+    }
+    .loading-container {
+      display: flex;
+      justify-content: center;
+      padding: 48px;
+    }
+    .member-item {
+      --padding-start: 0;
+      --inner-padding-end: 0;
+      margin-bottom: 8px;
+    }
+    .avatar-placeholder {
+      width: 100%;
+      height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: var(--ion-color-primary);
+      color: white;
+      font-weight: 600;
+      border-radius: 50%;
+    }
+    .status-badge {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      padding: 6px 12px;
+    }
+    .status-badge ion-icon {
+      font-size: 14px;
+    }
+    ion-item h2 {
+      font-weight: 600;
+    }
+  `],
+})
+export class TeamPage implements OnInit {
+  private userContext = inject(UserContextService);
+  private orgService = inject(OrganizationService);
+  private modalCtrl = inject(ModalController);
+  private alertCtrl = inject(AlertController);
+  private toastCtrl = inject(ToastController);
+
+  activeOrganization: Organization | null = null;
+  members: PractitionerRole[] = [];
+  isLoading = false;
+  canManage = false;
+
+  constructor() {
+    addIcons({
+      peopleOutline,
+      personAddOutline,
+      trashOutline,
+      mailOutline,
+      checkmarkCircleOutline,
+      timeOutline,
+    });
+  }
+
+  ngOnInit(): void {
+    this.userContext.getActiveOrganizationId$().pipe(
+      filter(id => !!id),
+      switchMap(id => this.orgService.get(id!).pipe(catchError(() => of(null))))
+    ).subscribe(org => {
+      this.activeOrganization = org;
+      if (org) {
+        this.loadData();
+      }
+    });
+  }
+
+  async loadData(event?: any): Promise<void> {
+    const orgId = this.userContext.getActiveOrganizationId();
+    if (!orgId) {
+      if (event) event.target.complete();
+      return;
+    }
+
+    this.isLoading = true;
+
+    try {
+      this.members = await firstValueFrom(this.orgService.getMembers(orgId));
+
+      // Check if current user can manage team
+      const myId = this.userContext.getUserId();
+      const myRole = this.members.find(m => m.practitionerId === myId);
+      this.canManage = myRole ? canManageTeam(myRole.roleCode) : false;
+
+    } catch (error) {
+      console.error('Error loading team', error);
+    } finally {
+      this.isLoading = false;
+      if (event) event.target.complete();
+    }
+  }
+
+  async openInviteModal(): Promise<void> {
+    const modal = await this.modalCtrl.create({
+      component: InviteCollaboratorComponent,
+      componentProps: {
+        title: 'Invita Collaboratore',
+        organizationName: this.activeOrganization?.name,
+      },
+    });
+
+    await modal.present();
+
+    const { data, role } = await modal.onDidDismiss();
+    if (role === 'confirm' && data) {
+      await this.sendInvite(data);
+    }
+  }
+
+  private async sendInvite(data: { email: string; role: string }): Promise<void> {
+    const orgId = this.userContext.getActiveOrganizationId();
+    if (!orgId) return;
+
+    try {
+      await firstValueFrom(this.orgService.inviteMember(orgId, data.email, data.role as OrganizationRole));
+      const toast = await this.toastCtrl.create({
+        message: 'Invito inviato con successo',
+        duration: 2000,
+        color: 'success',
+      });
+      await toast.present();
+      await this.loadData();
+    } catch (error) {
+      const toast = await this.toastCtrl.create({
+        message: 'Errore durante l\'invio dell\'invito',
+        duration: 2000,
+        color: 'danger',
+      });
+      await toast.present();
+    }
+  }
+
+  async confirmRemove(member: PractitionerRole): Promise<void> {
+    const alert = await this.alertCtrl.create({
+      header: 'Rimuovi Collaboratore',
+      message: `Vuoi davvero rimuovere ${member.displayName || member.email} dal team?`,
+      buttons: [
+        { text: 'Annulla', role: 'cancel' },
+        {
+          text: 'Rimuovi',
+          role: 'destructive',
+          handler: () => this.removeMember(member),
+        },
+      ],
+    });
+    await alert.present();
+  }
+
+  private async removeMember(member: PractitionerRole): Promise<void> {
+    const orgId = this.userContext.getActiveOrganizationId();
+    if (!orgId) return;
+
+    try {
+      await firstValueFrom(this.orgService.removeMember(orgId, member.id));
+      const toast = await this.toastCtrl.create({
+        message: 'Collaboratore rimosso',
+        duration: 2000,
+        color: 'success',
+      });
+      await toast.present();
+      await this.loadData();
+    } catch (error) {
+      const toast = await this.toastCtrl.create({
+        message: 'Errore durante la rimozione',
+        duration: 2000,
+        color: 'danger',
+      });
+      await toast.present();
+    }
+  }
+
+  getInitials(member: PractitionerRole): string {
+    const name = member.displayName || member.email || '';
+    return name.split(' ').map(p => p[0]).join('').toUpperCase().substring(0, 2);
+  }
+
+  getRoleLabel(roleCode: string): string {
+    return getRoleLabel(roleCode as any);
+  }
+
+  getStatusColor(status: string): string {
+    return status === 'ACCEPTED' ? 'success' : 'warning';
+  }
+
+  getStatusIcon(status: string): string {
+    return status === 'ACCEPTED' ? 'checkmark-circle-outline' : 'time-outline';
+  }
+}
