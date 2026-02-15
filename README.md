@@ -22,6 +22,7 @@ The generator creates files. You modify and deploy them. That is the extent of w
 - Terraform 1.0 or later
 - Firebase CLI (`npm install -g firebase-tools`)
 - gcloud CLI authenticated (`gcloud auth application-default login`)
+- GitHub repository (empty, existing, or planned for the new app)
 
 ### Generate an Application
 
