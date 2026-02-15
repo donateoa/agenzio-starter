@@ -3,6 +3,9 @@
   "version": "1.0.0",
   "private": true,
   "description": "App generator for Agenzio Starter",
+  "bin": {
+    "agenzio-generator": "bin/generate.js"
+  },
   "scripts": {
     "generate": "plop",
     "generate:app": "plop app"
