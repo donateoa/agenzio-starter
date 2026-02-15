@@ -27,7 +27,7 @@ The generator creates files. You modify and deploy them. That is the extent of w
 
 ```bash
 # Clone this repository
-git clone https://github.com/your-org/agenzio-starter.git
+git clone https://github.com/donateoa/agenzio-starter.git
 cd agenzio-starter
 
 # Install generator dependencies
